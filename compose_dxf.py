@@ -1,55 +1,79 @@
 import ezdxf
-import os
 from google_drive import baixar_arquivo_drive
 
-# posições fixas definidas pelo usuário
 COORDENADAS = {
-    1: (99.5, 113.9),
-    2: (253.0, 113.9),
-    3: (406.5, 113.9),
+    1: (99.5, 113.9), 
+    2: (253.0, 113.9), 
+    3: (406.5, 113.9), 
     4: (560.0, 113.9),
-    5: (713.5, 113.9),
-    6: (867.0, 113.9),
-    7: (99.5, 311.7),
+    5: (713.5, 113.9), 
+    6: (867.0, 113.9), 
+    7: (99.5, 311.7), 
     8: (253.0, 311.7),
-    9: (406.5, 311.7),
-    10: (560.0, 311.7),
-    11: (713.5, 311.7),
+    9: (406.5, 311.7), 
+    10: (560.0, 311.7), 
+    11: (713.5, 311.7), 
     12: (867.0, 311.7),
-    13: (99.5, 509.5),
-    14: (253.0, 509.5),
-    15: (406.5, 509.5),
+    13: (99.5, 509.5), 
+    14: (253.0, 509.5), 
+    15: (406.5, 509.5), 
     16: (560.0, 509.5),
-    17: (713.5, 509.5),
+    17: (713.5, 509.5), 
     18: (867.0, 509.5),
 }
+
+def calcular_centro(msp):
+    min_x, min_y, max_x, max_y = None, None, None, None
+    for e in msp:
+        try:
+            bbox = e.bbox()
+            if bbox.extmin is None or bbox.extmax is None:
+                continue
+            exmin = bbox.extmin
+            exmax = bbox.extmax
+            if min_x is None:
+                min_x, min_y = exmin.x, exmin.y
+                max_x, max_y = exmax.x, exmax.y
+            else:
+                min_x = min(min_x, exmin.x)
+                min_y = min(min_y, exmin.y)
+                max_x = max(max_x, exmax.x)
+                max_y = max(max_y, exmax.y)
+        except Exception:
+            continue
+    if min_x is None:
+        return (0, 0)
+    centro_x = (min_x + max_x) / 2
+    centro_y = (min_y + max_y) / 2
+    return (centro_x, centro_y)
+
+def adicionar_marca(msp, x, y, tamanho=5):
+    msp.add_line((x - tamanho, y), (x + tamanho, y))
+    msp.add_line((x, y - tamanho), (x, y + tamanho))
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
     base_path = baixar_arquivo_drive("BASE.DXF")
     doc_base = ezdxf.readfile(base_path)
     msp_base = doc_base.modelspace()
 
+    # adiciona marcações em todas as posições
+    for x, y in COORDENADAS.values():
+        adicionar_marca(msp_base, x, y)
+
     for item in lista_arquivos:
         arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
         doc_insert = ezdxf.readfile(arq_path)
         msp_insert = doc_insert.modelspace()
 
-        bbox = msp_insert.bbox()
-        largura = bbox.size.x
-        altura = bbox.size.y
-
-        centro_x = bbox.center.x
-        centro_y = bbox.center.y
-
+        cx, cy = calcular_centro(msp_insert)
         destino_x, destino_y = COORDENADAS[item.posicao]
 
-        deslocamento_x = destino_x - centro_x
-        deslocamento_y = destino_y - centro_y
+        dx = destino_x - cx
+        dy = destino_y - cy
 
-        # copia as entidades com deslocamento calculado
-        for e in msp_insert:
-            nova_entidade = e.copy()
-            nova_entidade.translate(dx=deslocamento_x, dy=deslocamento_y)
-            msp_base.add_entity(nova_entidade)
+        for entidade in msp_insert:
+            nova = entidade.copy()
+            nova.translate(dx=dx, dy=dy)
+            msp_base.add_entity(nova)
 
     doc_base.saveas(caminho_saida)
