@@ -28,8 +28,7 @@ FOLDER_ID = "18RIUiRS7SugpUeGOIAxu3gVj9D6-MD2G"
 
 def baixar_arquivo_drive(nome_arquivo, subpasta=None):
     query = f"'{FOLDER_ID}' in parents and name = '{nome_arquivo}'"
-    if subpasta:
-        query += f" and '{FOLDER_ID}' in parents"
+   if subpasta:
 
     response = drive_service.files().list(q=query, fields="files(id, name)").execute()
     arquivos = response.get("files", [])
