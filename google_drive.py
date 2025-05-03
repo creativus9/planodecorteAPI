@@ -1,18 +1,12 @@
 import os
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-import tempfile
-
 import json
-import os
+import tempfile
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # Carrega credenciais direto da variável de ambiente (Render)
 SERVICE_ACCOUNT_JSON = os.getenv("service_account.json")
-
 if not SERVICE_ACCOUNT_JSON:
     raise Exception("Variável de ambiente 'service_account.json' não foi encontrada.")
 
@@ -27,23 +21,31 @@ drive_service = build('drive', 'v3', credentials=creds)
 FOLDER_ID = "18RIUiRS7SugpUeGOIAxu3gVj9D6-MD2G"
 
 def baixar_arquivo_drive(nome_arquivo, subpasta=None):
-    query = f"'{FOLDER_ID}' in parents and name = '{nome_arquivo}'"
-   if subpasta:
+    if subpasta:
+        # Buscar ID da subpasta
+        sub_query = f"'{FOLDER_ID}' in parents and name = '{subpasta}' and mimeType = 'application/vnd.google-apps.folder'"
+        sub_result = drive_service.files().list(q=sub_query, fields="files(id)").execute().get("files", [])
+        if not sub_result:
+            raise FileNotFoundError(f"Subpasta '{subpasta}' não encontrada no Drive.")
+        sub_id = sub_result[0]["id"]
+        query = f"'{sub_id}' in parents and name = '{nome_arquivo}'"
+    else:
+        query = f"'{FOLDER_ID}' in parents and name = '{nome_arquivo}'"
 
     response = drive_service.files().list(q=query, fields="files(id, name)").execute()
     arquivos = response.get("files", [])
-
     if not arquivos:
         raise FileNotFoundError(f"{nome_arquivo} não encontrado no Drive.")
 
     file_id = arquivos[0]["id"]
-    request = drive_service.files().get_media(fileId=file_id)
-    fh = tempfile.NamedTemporaryFile(delete=False, suffix=".dxf")
-    downloader = MediaFileUpload(fh.name, resumable=False)
+    path_local = f"/tmp/{nome_arquivo}"
+
+    # Baixar conteúdo do arquivo
     data = drive_service.files().get_media(fileId=file_id).execute()
-    with open(fh.name, 'wb') as f:
+    with open(path_local, 'wb') as f:
         f.write(data)
-    return fh.name
+
+    return path_local
 
 def listar_arquivos_existentes():
     response = drive_service.files().list(q=f"'{FOLDER_ID}' in parents", fields="files(name)").execute()
@@ -59,10 +61,10 @@ def upload_to_drive(caminho, nome):
     file_id = file.get("id")
     drive_service.permissions().create(fileId=file_id, body={"role": "reader", "type": "anyone"}).execute()
     return f"https://drive.google.com/file/d/{file_id}/view"
+
 def listar_arquivos_subpasta():
     query = f"'{FOLDER_ID}' in parents and name = 'arquivos padronizados' and mimeType = 'application/vnd.google-apps.folder'"
     subpastas = drive_service.files().list(q=query, fields="files(id, name)").execute().get("files", [])
-
     if not subpastas:
         print("[ERRO] Subpasta 'arquivos padronizados' não encontrada.")
         return []
@@ -70,7 +72,6 @@ def listar_arquivos_subpasta():
     subpasta_id = subpastas[0]['id']
     print(f"[INFO] Subpasta encontrada: {subpastas[0]['name']} ({subpasta_id})")
 
-    # Lista arquivos dentro da subpasta
     query = f"'{subpasta_id}' in parents"
     arquivos = drive_service.files().list(q=query, fields="files(id, name)").execute().get("files", [])
 
