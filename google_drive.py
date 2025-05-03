@@ -12,7 +12,7 @@ from googleapiclient.http import MediaFileUpload
 
 # Carrega credenciais direto da variável de ambiente (Render)
 SERVICE_ACCOUNT_JSON = os.getenv("service_account.json")
-FOLDER_ID = "18RIUiRS7SugpUeGOIAxu3gVj9D6-MD2G"
+
 if not SERVICE_ACCOUNT_JSON:
     raise Exception("Variável de ambiente 'service_account.json' não foi encontrada.")
 
@@ -24,7 +24,7 @@ creds = service_account.Credentials.from_service_account_info(
 )
 
 drive_service = build('drive', 'v3', credentials=creds)
-
+FOLDER_ID = "18RIUiRS7SugpUeGOIAxu3gVj9D6-MD2G"
 
 def baixar_arquivo_drive(nome_arquivo, subpasta=None):
     query = f"'{FOLDER_ID}' in parents and name = '{nome_arquivo}'"
@@ -60,3 +60,23 @@ def upload_to_drive(caminho, nome):
     file_id = file.get("id")
     drive_service.permissions().create(fileId=file_id, body={"role": "reader", "type": "anyone"}).execute()
     return f"https://drive.google.com/file/d/{file_id}/view"
+def listar_arquivos_subpasta():
+    query = f"'{FOLDER_ID}' in parents and name = 'arquivos padronizados' and mimeType = 'application/vnd.google-apps.folder'"
+    subpastas = drive_service.files().list(q=query, fields="files(id, name)").execute().get("files", [])
+
+    if not subpastas:
+        print("[ERRO] Subpasta 'arquivos padronizados' não encontrada.")
+        return []
+
+    subpasta_id = subpastas[0]['id']
+    print(f"[INFO] Subpasta encontrada: {subpastas[0]['name']} ({subpasta_id})")
+
+    # Lista arquivos dentro da subpasta
+    query = f"'{subpasta_id}' in parents"
+    arquivos = drive_service.files().list(q=query, fields="files(id, name)").execute().get("files", [])
+
+    print("[INFO] Arquivos visíveis na subpasta:")
+    for arq in arquivos:
+        print(f" - {arq['name']}")
+
+    return arquivos
