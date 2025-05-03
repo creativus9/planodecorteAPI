@@ -1,3 +1,4 @@
+
 import ezdxf
 from google_drive import baixar_arquivo_drive
 
@@ -8,6 +9,13 @@ COORDENADAS = {
     13: (99.5, 509.5), 14: (253.0, 509.5), 15: (406.5, 509.5), 16: (560.0, 509.5),
     17: (713.5, 509.5), 18: (867.0, 509.5),
 }
+
+POSICOES_BASE = [
+    (8.5, 8.5),
+    (961.5, 8.5),
+    (8.5, 771.5),
+    (961.5, 771.5),
+]
 
 def calcular_centro(msp):
     min_x, min_y, max_x, max_y = None, None, None, None
@@ -38,23 +46,29 @@ def adicionar_marca(msp, x, y, tamanho=5):
     msp.add_line((x, y - tamanho), (x, y + tamanho))
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
-    # Corrigir base: deslocar para que (0,0) seja o canto inferior esquerdo
-    base_path = baixar_arquivo_drive("BASE.DXF")
-    doc_base = ezdxf.readfile(base_path)
-    msp_base = doc_base.modelspace()
-    bbox_base = msp_base.bbox()
-    offset_x = -bbox_base.extmin.x
-    offset_y = -bbox_base.extmin.y
-    for e in list(msp_base):
-        try:
-            e.translate(dx=offset_x, dy=offset_y, dz=0)
-        except Exception:
-            continue
+    doc_saida = ezdxf.new()
+    msp_saida = doc_saida.modelspace()
 
-    # adicionar marcações
-    for x, y in COORDENADAS.values():
-        adicionar_marca(msp_base, x, y)
+    # Inserir BASE.DXF em 4 posições como se fosse uma etiqueta
+    for x, y in POSICOES_BASE:
+        base_path = baixar_arquivo_drive("BASE.DXF")
+        doc_base = ezdxf.readfile(base_path)
+        msp_base = doc_base.modelspace()
+        centro_x, centro_y = calcular_centro(msp_base)
+        dx = x - centro_x
+        dy = y - centro_y
 
+        for entidade in msp_base:
+            try:
+                nova = entidade.copy()
+                nova.translate(dx=dx, dy=dy, dz=0)
+                msp_saida.add_entity(nova)
+            except Exception:
+                continue
+
+        adicionar_marca(msp_saida, x, y)
+
+    # Inserir arquivos de etiqueta
     for item in lista_arquivos:
         arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
         doc_etiqueta = ezdxf.readfile(arq_path)
@@ -70,8 +84,8 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
             try:
                 nova = entidade.copy()
                 nova.translate(dx=dx, dy=dy, dz=0)
-                msp_base.add_entity(nova)
+                msp_saida.add_entity(nova)
             except Exception:
                 continue
 
-    doc_base.saveas(caminho_saida)
+    doc_saida.saveas(caminho_saida)
