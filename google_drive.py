@@ -4,14 +4,26 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import tempfile
 
-SERVICE_ACCOUNT_FILE = "service_account.json"
-FOLDER_ID = "18RIUiRS7SugpUeGOIAxu3gVj9D6-MD2G"
+import json
+import os
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
-creds = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE,
+# Carrega credenciais direto da variável de ambiente (Render)
+SERVICE_ACCOUNT_JSON = os.getenv("service_account.json")
+if not SERVICE_ACCOUNT_JSON:
+    raise Exception("Variável de ambiente 'service_account.json' não foi encontrada.")
+
+info = json.loads(SERVICE_ACCOUNT_JSON)
+
+creds = service_account.Credentials.from_service_account_info(
+    info,
     scopes=["https://www.googleapis.com/auth/drive"]
 )
+
 drive_service = build('drive', 'v3', credentials=creds)
+
 
 def baixar_arquivo_drive(nome_arquivo, subpasta=None):
     query = f"'{FOLDER_ID}' in parents and name = '{nome_arquivo}'"
