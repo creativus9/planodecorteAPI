@@ -73,7 +73,7 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
 
         for entidade in msp_insert:
             nova = entidade.copy()
-            nova.translate(dx=dx, dy=dy)
+            nova.translate(dx=dx, dy=dy, dz=0)
             msp_base.add_entity(nova)
 
     doc_base.saveas(caminho_saida)
