@@ -39,3 +39,8 @@ def gerar_nome_sequencial():
         if nome not in existentes:
             return nome
         contador += 1
+
+from google_drive import listar_arquivos_subpasta
+
+# Log de diagnóstico ao iniciar o servidor
+listar_arquivos_subpasta()
