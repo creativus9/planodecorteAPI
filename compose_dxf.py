@@ -42,9 +42,31 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
     base_path = baixar_arquivo_drive("BASE.DXF")
     doc_base = ezdxf.readfile(base_path)
     msp_base = doc_base.modelspace()
-    bbox_base = msp_base.bbox()
-    offset_x = -bbox_base.extmin.x
-    offset_y = -bbox_base.extmin.y
+    base_min_x, base_min_y, base_max_x, base_max_y = None, None, None, None
+for e in msp_base:
+    try:
+        bbox = e.bbox()
+        if bbox.extmin and bbox.extmax:
+            exmin = bbox.extmin
+            exmax = bbox.extmax
+            if base_min_x is None:
+                base_min_x, base_min_y = exmin.x, exmin.y
+                base_max_x, base_max_y = exmax.x, exmax.y
+            else:
+                base_min_x = min(base_min_x, exmin.x)
+                base_min_y = min(base_min_y, exmin.y)
+                base_max_x = max(base_max_x, exmax.x)
+                base_max_y = max(base_max_y, exmax.y)
+    except Exception:
+        continue
+
+if base_min_x is None:
+    offset_x, offset_y = 0, 0
+else:
+    offset_x = -base_min_x
+    offset_y = -base_min_y
+
+    
     for e in list(msp_base):
         try:
             e.translate(dx=offset_x, dy=offset_y, dz=0)
