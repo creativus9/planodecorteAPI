@@ -12,6 +12,7 @@ from googleapiclient.http import MediaFileUpload
 
 # Carrega credenciais direto da variável de ambiente (Render)
 SERVICE_ACCOUNT_JSON = os.getenv("service_account.json")
+FOLDER_ID = "18RIUiRS7SugpUeGOIAxu3gVj9D6-MD2G"
 if not SERVICE_ACCOUNT_JSON:
     raise Exception("Variável de ambiente 'service_account.json' não foi encontrada.")
 
