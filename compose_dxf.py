@@ -10,6 +10,13 @@ COORDENADAS = {
     17: (713.5, 509.5), 18: (867.0, 509.5),
 }
 
+INSERCOES_BASE = [
+    (8.5, 8.5),
+    (961.5, 8.5),
+    (8.5, 771.5),
+    (961.5, 771.5),
+]
+
 def calcular_centro(msp):
     min_x, min_y, max_x, max_y = None, None, None, None
     for e in msp:
@@ -39,43 +46,27 @@ def adicionar_marca(msp, x, y, tamanho=5):
     msp.add_line((x, y - tamanho), (x, y + tamanho))
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
-    base_path = baixar_arquivo_drive("BASE.DXF")
-    doc_base = ezdxf.readfile(base_path)
-    msp_base = doc_base.modelspace()
+    doc_saida = ezdxf.new()
+    msp_saida = doc_saida.modelspace()
 
-    base_min_x, base_min_y, base_max_x, base_max_y = None, None, None, None
-    for e in msp_base:
-        try:
-            bbox = e.bbox()
-            if bbox.extmin and bbox.extmax:
-                exmin = bbox.extmin
-                exmax = bbox.extmax
-                if base_min_x is None:
-                    base_min_x, base_min_y = exmin.x, exmin.y
-                    base_max_x, base_max_y = exmax.x, exmax.y
-                else:
-                    base_min_x = min(base_min_x, exmin.x)
-                    base_min_y = min(base_min_y, exmin.y)
-                    base_max_x = max(base_max_x, exmax.x)
-                    base_max_y = max(base_max_y, exmax.y)
-        except Exception:
-            continue
+    # Inserir BASE.DXF em 4 posições com base no centro
+    for x, y in INSERCOES_BASE:
+        base_path = baixar_arquivo_drive("BASE.DXF")
+        doc_base = ezdxf.readfile(base_path)
+        msp_base = doc_base.modelspace()
+        centro_x, centro_y = calcular_centro(msp_base)
+        dx = x - centro_x
+        dy = y - centro_y
+        for entidade in msp_base:
+            try:
+                nova = entidade.copy()
+                nova.translate(dx=dx, dy=dy, dz=0)
+                msp_saida.add_entity(nova)
+            except Exception:
+                continue
+        adicionar_marca(msp_saida, x, y)
 
-    if base_min_x is None:
-        offset_x, offset_y = 0, 0
-    else:
-        offset_x = -base_min_x
-        offset_y = -base_min_y
-
-    for e in list(msp_base):
-        try:
-            e.translate(dx=offset_x, dy=offset_y, dz=0)
-        except Exception:
-            continue
-
-    for x, y in COORDENADAS.values():
-        adicionar_marca(msp_base, x, y)
-
+    # Inserir arquivos de etiqueta nas posições definidas
     for item in lista_arquivos:
         arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
         doc_etiqueta = ezdxf.readfile(arq_path)
@@ -91,8 +82,8 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
             try:
                 nova = entidade.copy()
                 nova.translate(dx=dx, dy=dy, dz=0)
-                msp_base.add_entity(nova)
+                msp_saida.add_entity(nova)
             except Exception:
                 continue
 
-    doc_base.saveas(caminho_saida)
+    doc_saida.saveas(caminho_saida)
