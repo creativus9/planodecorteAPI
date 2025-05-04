@@ -1,46 +1,38 @@
-from fastapi import FastAPI, HTTPException, Request
+
+from fastapi import FastAPI, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List
 from compose_dxf import compor_dxf_com_base
-from google_drive import upload_to_drive, listar_arquivos_existentes
-from datetime import datetime
-import os
+from google_drive import upload_arquivo_drive, gerar_nome_arquivo
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class Arquivo(BaseModel):
     nome: str
     posicao: int
 
-class Entrada(BaseModel):
-    arquivos: list[Arquivo]
+class EntradaArquivos(BaseModel):
+    arquivos: List[Arquivo]
 
 @app.post("/compor")
-def compor(entrada: Entrada):
-    if len(entrada.arquivos) > 18:
-        raise HTTPException(status_code=400, detail="Máximo de 18 arquivos permitidos.")
+async def compor(entrada: EntradaArquivos, background: BackgroundTasks):
+    nome_arquivo = gerar_nome_arquivo()
+    caminho_saida = f"/tmp/{nome_arquivo}"
+    background.add_task(gerar_arquivo_em_fundo, entrada.arquivos, caminho_saida, nome_arquivo)
+    return {"mensagem": "Arquivo sendo gerado em segundo plano", "nome": nome_arquivo}
 
-    # Compor o DXF
-    nome_saida = gerar_nome_sequencial()
-    path_saida = f"/tmp/{nome_saida}"
-    compor_dxf_com_base(entrada.arquivos, path_saida)
-
-    # Upload ao Drive
-    url = upload_to_drive(path_saida, nome_saida)
-    return {"url": url}
-
-def gerar_nome_sequencial():
-    hoje = datetime.now().strftime("%d-%m-%Y")
-    prefixo = "Plano de corte"
-    existentes = listar_arquivos_existentes()
-
-    contador = 1
-    while True:
-        nome = f"{prefixo} {contador:02d} {hoje}.dxf"
-        if nome not in existentes:
-            return nome
-        contador += 1
-
-from google_drive import listar_arquivos_subpasta
-
-# Log de diagnóstico ao iniciar o servidor
-listar_arquivos_subpasta()
+def gerar_arquivo_em_fundo(lista_arquivos, caminho_saida, nome_arquivo):
+    try:
+        compor_dxf_com_base(lista_arquivos, caminho_saida)
+        upload_arquivo_drive(caminho_saida, nome_arquivo)
+        print(f"[OK] Arquivo gerado e enviado ao Drive: {nome_arquivo}")
+    except Exception as e:
+        print(f"[ERRO] Durante geração/envio: {e}")
