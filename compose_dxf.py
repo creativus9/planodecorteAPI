@@ -3,6 +3,7 @@ import ezdxf
 from google_drive import baixar_arquivo_drive
 
 COORDENADAS = {
+    0: (0.0, 0.0),
     1: (99.5, 113.9), 2: (253.0, 113.9), 3: (406.5, 113.9), 4: (560.0, 113.9),
     5: (713.5, 113.9), 6: (867.0, 113.9), 7: (99.5, 311.7), 8: (253.0, 311.7),
     9: (406.5, 311.7), 10: (560.0, 311.7), 11: (713.5, 311.7), 12: (867.0, 311.7),
@@ -53,6 +54,15 @@ def adicionar_marca(msp, x, y, tamanho=17):
     ], dxfattribs={"color": cor_amarela, "closed": True})
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
+    # Inserir temporariamente o arquivo da posição 1 em (0, 0)
+    pos1 = next((a for a in lista_arquivos if a.posicao == 1), None)
+    entidades_temp = []
+    if pos1:
+        from copy import deepcopy
+        temp_item = deepcopy(pos1)
+        temp_item.posicao = 0
+        lista_arquivos.insert(0, temp_item)
+
     doc_saida = ezdxf.new()
     msp_saida = doc_saida.modelspace()
 
