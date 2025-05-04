@@ -53,26 +53,24 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
     for x, y in POSICOES_BASE:
         adicionar_marca(msp, x, y)
 
-    posicoes = {item.posicao: item.nome for item in lista_arquivos}
-
-    for pos in range(1, 19):
-        if pos not in posicoes:
+    for item in lista_arquivos:
+        destino = COORDENADAS.get(item.posicao)
+        if not destino:
             continue
 
-        nome_arquivo = posicoes[pos]
-        arq_path = baixar_arquivo_drive(nome_arquivo, subpasta="arquivos padronizados")
-        doc_etiqueta = ezdxf.readfile(arq_path)
-        msp_etiqueta = doc_etiqueta.modelspace()
-        centro_x, centro_y = calcular_centro(msp_etiqueta)
-        dx = COORDENADAS[pos][0] - centro_x
-        dy = COORDENADAS[pos][1] - centro_y
+        try:
+            arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
+            doc_etiqueta = ezdxf.readfile(arq_path)
+            msp_etiqueta = doc_etiqueta.modelspace()
+            centro_x, centro_y = calcular_centro(msp_etiqueta)
+            dx = destino[0] - centro_x
+            dy = destino[1] - centro_y
 
-        for e in list(msp_etiqueta):
-            try:
+            for e in list(msp_etiqueta):
                 nova = e.copy()
                 nova.translate(dx, dy)
                 msp.add_entity(nova)
-            except Exception:
-                continue
+        except Exception:
+            continue
 
     doc.saveas(caminho_saida)
