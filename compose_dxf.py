@@ -70,7 +70,7 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
         dx = destino_x - centro_x
         dy = destino_y - centro_y
 
-        for entidade in msp_etiqueta:
+        for entidade in list(msp_etiqueta):
             try:
                 nova = entidade.copy()
                 nova.translate(dx=dx, dy=dy, dz=0)
