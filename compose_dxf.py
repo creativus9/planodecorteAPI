@@ -41,15 +41,21 @@ def calcular_centro(msp):
     centro_y = (min_y + max_y) / 2
     return (centro_x, centro_y)
 
-def adicionar_marca(msp, x, y, tamanho=5):
-    msp.add_line((x - tamanho, y), (x + tamanho, y))
-    msp.add_line((x, y - tamanho), (x, y + tamanho))
+def adicionar_marca(msp, x, y, tamanho=17):
+    half = tamanho / 2
+    cor_amarela = 2  # cor 2 = amarelo padrão em DXF
+    msp.add_lwpolyline([
+        (x - half, y - half),
+        (x + half, y - half),
+        (x + half, y + half),
+        (x - half, y + half),
+        (x - half, y - half)
+    ], dxfattribs={"color": cor_amarela, "closed": True})
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
     doc_saida = ezdxf.new()
     msp_saida = doc_saida.modelspace()
 
-    # Inserir BASE.DXF em 4 posições como se fosse uma etiqueta
     for x, y in POSICOES_BASE:
         base_path = baixar_arquivo_drive("BASE.DXF")
         doc_base = ezdxf.readfile(base_path)
@@ -68,7 +74,6 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
 
         adicionar_marca(msp_saida, x, y)
 
-    # Inserir arquivos de etiqueta
     for item in lista_arquivos:
         arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
         doc_etiqueta = ezdxf.readfile(arq_path)
