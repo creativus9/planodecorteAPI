@@ -1,5 +1,6 @@
 
 import ezdxf
+import copy
 from google_drive import baixar_arquivo_drive
 
 COORDENADAS = {
@@ -47,30 +48,29 @@ def adicionar_marca(msp, x, y, tamanho=17):
     )
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
-    doc = ezdxf.new()
-    msp = doc.modelspace()
+    doc_saida = ezdxf.new()
+    msp_saida = doc_saida.modelspace()
 
     for x, y in POSICOES_BASE:
-        adicionar_marca(msp, x, y)
+        adicionar_marca(msp_saida, x, y)
 
     for item in lista_arquivos:
-        destino = COORDENADAS.get(item.posicao)
-        if not destino:
-            continue
-
         try:
             arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
             doc_etiqueta = ezdxf.readfile(arq_path)
             msp_etiqueta = doc_etiqueta.modelspace()
-            centro_x, centro_y = calcular_centro(msp_etiqueta)
-            dx = destino[0] - centro_x
-            dy = destino[1] - centro_y
 
-            for e in list(msp_etiqueta):
-                nova = e.copy()
+            centro_x, centro_y = calcular_centro(msp_etiqueta)
+            destino_x, destino_y = COORDENADAS[item.posicao]
+
+            dx = destino_x - centro_x
+            dy = destino_y - centro_y
+
+            for entidade in list(msp_etiqueta):
+                nova = copy.deepcopy(entidade)
                 nova.translate(dx, dy)
-                msp.add_entity(nova)
+                msp_saida.add_entity(nova)
         except Exception:
             continue
 
-    doc.saveas(caminho_saida)
+    doc_saida.saveas(caminho_saida)
