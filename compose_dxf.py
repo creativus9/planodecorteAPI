@@ -1,6 +1,5 @@
 
 import ezdxf
-import copy
 from google_drive import baixar_arquivo_drive
 
 COORDENADAS = {
@@ -73,7 +72,7 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
 
         for entidade in list(msp_etiqueta):
             try:
-                nova = copy.deepcopy(entidade)
+                nova = entidade.copy()
                 nova.translate(dx=dx, dy=dy, dz=0)
                 msp_saida.add_entity(nova)
             except Exception:
