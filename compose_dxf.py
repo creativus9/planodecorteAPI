@@ -37,45 +37,42 @@ def calcular_centro(msp):
             continue
     if min_x is None:
         return (0, 0)
-    centro_x = (min_x + max_x) / 2
-    centro_y = (min_y + max_y) / 2
-    return (centro_x, centro_y)
+    return ((min_x + max_x) / 2, (min_y + max_y) / 2)
 
 def adicionar_marca(msp, x, y, tamanho=17):
-    half = tamanho / 2
-    cor_amarela = 2  # cor 2 = amarelo padrão em DXF
-    msp.add_lwpolyline([
-        (x - half, y - half),
-        (x + half, y - half),
-        (x + half, y + half),
-        (x - half, y + half),
-        (x - half, y - half)
-    ], dxfattribs={"color": cor_amarela, "closed": True})
+    h = tamanho / 2
+    msp.add_lwpolyline(
+        [(x - h, y - h), (x + h, y - h), (x + h, y + h), (x - h, y + h), (x - h, y - h)],
+        dxfattribs={"color": 2, "closed": True}
+    )
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
-    doc_saida = ezdxf.new()
-    msp_saida = doc_saida.modelspace()
+    doc = ezdxf.new()
+    msp = doc.modelspace()
 
     for x, y in POSICOES_BASE:
-        adicionar_marca(msp_saida, x, y)
+        adicionar_marca(msp, x, y)
 
-    for item in lista_arquivos:
-        arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
+    posicoes = {item.posicao: item.nome for item in lista_arquivos}
+
+    for pos in range(1, 19):
+        if pos not in posicoes:
+            continue
+
+        nome_arquivo = posicoes[pos]
+        arq_path = baixar_arquivo_drive(nome_arquivo, subpasta="arquivos padronizados")
         doc_etiqueta = ezdxf.readfile(arq_path)
         msp_etiqueta = doc_etiqueta.modelspace()
-
         centro_x, centro_y = calcular_centro(msp_etiqueta)
-        destino_x, destino_y = COORDENADAS[item.posicao]
+        dx = COORDENADAS[pos][0] - centro_x
+        dy = COORDENADAS[pos][1] - centro_y
 
-        dx = destino_x - centro_x
-        dy = destino_y - centro_y
-
-        for entidade in list(msp_etiqueta):
+        for e in list(msp_etiqueta):
             try:
-                nova = entidade.copy()
-                nova.translate(dx=dx, dy=dy, dz=0)
-                msp_saida.add_entity(nova)
+                nova = e.copy()
+                nova.translate(dx, dy)
+                msp.add_entity(nova)
             except Exception:
                 continue
 
-    doc_saida.saveas(caminho_saida)
+    doc.saveas(caminho_saida)
