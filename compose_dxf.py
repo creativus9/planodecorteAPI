@@ -57,21 +57,6 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
     msp_saida = doc_saida.modelspace()
 
     for x, y in POSICOES_BASE:
-        base_path = baixar_arquivo_drive("BASE.DXF")
-        doc_base = ezdxf.readfile(base_path)
-        msp_base = doc_base.modelspace()
-        centro_x, centro_y = calcular_centro(msp_base)
-        dx = x - centro_x
-        dy = y - centro_y
-
-        for entidade in msp_base:
-            try:
-                nova = entidade.copy()
-                nova.translate(dx=dx, dy=dy, dz=0)
-                msp_saida.add_entity(nova)
-            except Exception:
-                continue
-
         adicionar_marca(msp_saida, x, y)
 
     for item in lista_arquivos:
