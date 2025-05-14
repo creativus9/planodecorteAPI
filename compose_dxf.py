@@ -1,7 +1,8 @@
 import ezdxf
 from google_drive import baixar_arquivo_drive
+from collections import defaultdict
 
-# Posições centrais para cada etiqueta (1 a 18)
+# Coordenadas definidas para etiquetas e posições de base
 COORDENADAS = {
     1: (99.5, 113.9), 2: (253.0, 113.9), 3: (406.5, 113.9), 4: (560.0, 113.9),
     5: (713.5, 113.9), 6: (867.0, 113.9), 7: (99.5, 311.7), 8: (253.0, 311.7),
@@ -10,7 +11,7 @@ COORDENADAS = {
     17: (713.5, 509.5), 18: (867.0, 509.5),
 }
 
-# Posições para as marcações de base
+# Pontos onde adicionar marcações de base
 POSICOES_BASE = [
     (8.5, 8.5),
     (961.5, 8.5),
@@ -20,7 +21,7 @@ POSICOES_BASE = [
 
 def calcular_centro(msp):
     """
-    Calcula o centro do bounding box de todas as entidades em um Modelspace.
+    Calcula o centro do bounding box de todas as entidades em modelspace.
     """
     min_x = min_y = max_x = max_y = None
     for e in msp:
@@ -44,56 +45,78 @@ def calcular_centro(msp):
 
 def adicionar_marca(msp, x, y, tamanho=17):
     """
-    Adiciona um quadrado amarelo de lado `tamanho` centrado em (x,y).
+    Adiciona um quadrado de lado `tamanho` pontilhado no ponto (x,y).
     """
     half = tamanho / 2
-    msp.add_lwpolyline([
-        (x-half, y-half),
-        (x+half, y-half),
-        (x+half, y+half),
-        (x-half, y+half),
-        (x-half, y-half)
-    ], dxfattribs={"color": 2, "closed": True})
+    msp.add_lwpolyline(
+        [(x-half, y-half), (x+half, y-half), (x+half, y+half), (x-half, y+half), (x-half, y-half)],
+        dxfattribs={"color": 2, "closed": True}
+    )
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
     """
-    Gera um novo arquivo DXF:
-    1. Marcações de base (os quatro cantos definidores)
-    2. Insere cada etiqueta nas posições centrais definidas por COORDENADAS
+    Cria um novo DXF com:
+    - Marcações de base em POSICOES_BASE.
+    - Inserção da etiqueta na posição 1 de forma garantida.
+    - Agrupamento por nome para inserir demais posições via blocos.
     """
     # Cria novo documento e modelspace
-    doc = ezdxf.new()
-    msp = doc.modelspace()
+    doc_saida = ezdxf.new()
+    msp_saida = doc_saida.modelspace()
 
-    # Adiciona marcações de base
-    for (bx, by) in POSICOES_BASE:
-        adicionar_marca(msp, bx, by)
+    # Marcações de base
+    for x, y in POSICOES_BASE:
+        adicionar_marca(msp_saida, x, y)
 
-    # Insere cada arquivo de etiqueta na ordem fornecida
-    for item in lista_arquivos:
-        nome_arq = item.nome
-        pos = item.posicao
-        destino = COORDENADAS.get(pos)
-        if not destino:
-            continue
-        # Baixa e abre o DXF da etiqueta
-        arq_path = baixar_arquivo_drive(nome_arq, subpasta="arquivos padronizados")
+    # Inserção garantida para posição 1
+    # Procura primeiro item com posicao == 1
+    first_item = next((item for item in lista_arquivos if item.posicao == 1), None)
+    if first_item:
+        arq_path = baixar_arquivo_drive(first_item.nome, subpasta="arquivos padronizados")
         doc_etiq = ezdxf.readfile(arq_path)
         msp_etiq = doc_etiq.modelspace()
-
-        # Calcula o centro da etiqueta
         cx, cy = calcular_centro(msp_etiq)
-        dx = destino[0] - cx
-        dy = destino[1] - cy
-
-        # Copia entidades para a posição correta
+        destino_x, destino_y = COORDENADAS[1]
+        dx = destino_x - cx
+        dy = destino_y - cy
         for ent in msp_etiq:
             try:
                 nova = ent.copy()
                 nova.translate(dx=dx, dy=dy, dz=0)
-                msp.add_entity(nova)
+                msp_saida.add_entity(nova)
             except Exception:
                 continue
 
-    # Salva o DXF resultante
-    doc.saveas(caminho_saida)
+    # Prepara agrupamento para demais posições
+    grupos = defaultdict(list)
+    for item in lista_arquivos:
+        if item.posicao == 1:
+            continue  # já inserido
+        grupos[item.nome].append(item.posicao)
+
+    # Criação de blocos e inserções
+    for nome_arq, posicoes in grupos.items():
+        arq_path = baixar_arquivo_drive(nome_arq, subpasta="arquivos padronizados")
+        doc_etiq = ezdxf.readfile(arq_path)
+        msp_etiq = doc_etiq.modelspace()
+
+        cx, cy = calcular_centro(msp_etiq)
+        block_name = f"BLK_{nome_arq.replace('.', '_')}"
+        blk = doc_saida.blocks.new(name=block_name)
+
+        # Copia entidades centralizando no bloco
+        for e in msp_etiq:
+            try:
+                e_blk = e.copy()
+                e_blk.translate(dx=-cx, dy=-cy, dz=0)
+                blk.add_entity(e_blk)
+            except Exception:
+                continue
+
+        # Insere bloco nas posições restantes
+        for pos in posicoes:
+            destino_x, destino_y = COORDENADAS.get(pos, (0, 0))
+            msp_saida.add_blockref(block_name, insert=(destino_x, destino_y))
+
+    # Salva arquivo de saída
+    doc_saida.saveas(caminho_saida)
