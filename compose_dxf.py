@@ -1,8 +1,7 @@
 import ezdxf
 from google_drive import baixar_arquivo_drive
-import copy
 
-# Coordenadas definidas para etiquetas
+# Posições centrais para cada etiqueta (1 a 18)
 COORDENADAS = {
     1: (99.5, 113.9), 2: (253.0, 113.9), 3: (406.5, 113.9), 4: (560.0, 113.9),
     5: (713.5, 113.9), 6: (867.0, 113.9), 7: (99.5, 311.7), 8: (253.0, 311.7),
@@ -11,7 +10,7 @@ COORDENADAS = {
     17: (713.5, 509.5), 18: (867.0, 509.5),
 }
 
-# Posições de marcação de base
+# Posições para as marcações de base
 POSICOES_BASE = [
     (8.5, 8.5),
     (961.5, 8.5),
@@ -21,7 +20,7 @@ POSICOES_BASE = [
 
 def calcular_centro(msp):
     """
-    Calcula o centro do bounding box de todas as entidades em modelspace.
+    Calcula o centro do bounding box de todas as entidades em um Modelspace.
     """
     min_x = min_y = max_x = max_y = None
     for e in msp:
@@ -45,7 +44,7 @@ def calcular_centro(msp):
 
 def adicionar_marca(msp, x, y, tamanho=17):
     """
-    Adiciona um quadrado amarelo de lado `tamanho` no ponto (x,y).
+    Adiciona um quadrado amarelo de lado `tamanho` centrado em (x,y).
     """
     half = tamanho / 2
     msp.add_lwpolyline([
@@ -58,52 +57,43 @@ def adicionar_marca(msp, x, y, tamanho=17):
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
     """
-    Gera um novo DXF contendo:
-    - Marcações de base
-    - Inserções centralizadas de etiquetas usando blocos
+    Gera um novo arquivo DXF:
+    1. Marcações de base (os quatro cantos definidores)
+    2. Insere cada etiqueta nas posições centrais definidas por COORDENADAS
     """
-    # Cria documento de saída
-    doc_saida = ezdxf.new()
-    msp_saida = doc_saida.modelspace()
+    # Cria novo documento e modelspace
+    doc = ezdxf.new()
+    msp = doc.modelspace()
 
     # Adiciona marcações de base
-    for x, y in POSICOES_BASE:
-        adicionar_marca(msp_saida, x, y)
+    for (bx, by) in POSICOES_BASE:
+        adicionar_marca(msp, bx, by)
 
-    # Cache de blocos para cada arquivo, evitando recriações
-    block_cache = {}
-
-    # Insere cada etiqueta na ordem recebida
+    # Insere cada arquivo de etiqueta na ordem fornecida
     for item in lista_arquivos:
         nome_arq = item.nome
-        posicao = item.posicao
+        pos = item.posicao
+        destino = COORDENADAS.get(pos)
+        if not destino:
+            continue
+        # Baixa e abre o DXF da etiqueta
+        arq_path = baixar_arquivo_drive(nome_arq, subpasta="arquivos padronizados")
+        doc_etiq = ezdxf.readfile(arq_path)
+        msp_etiq = doc_etiq.modelspace()
 
-        # Cria bloco se ainda não existir
-        if nome_arq not in block_cache:
-            arq_path = baixar_arquivo_drive(nome_arq, subpasta="arquivos padronizados")
-            doc_etiq = ezdxf.readfile(arq_path)
-            msp_etiq = doc_etiq.modelspace()
+        # Calcula o centro da etiqueta
+        cx, cy = calcular_centro(msp_etiq)
+        dx = destino[0] - cx
+        dy = destino[1] - cy
 
-            # Calcula centro para alinhar
-            centro_x, centro_y = calcular_centro(msp_etiq)
-            block_name = f"BLK_{nome_arq.replace('.', '_')}"
-            blk = doc_saida.blocks.new(name=block_name)
+        # Copia entidades para a posição correta
+        for ent in msp_etiq:
+            try:
+                nova = ent.copy()
+                nova.translate(dx=dx, dy=dy, dz=0)
+                msp.add_entity(nova)
+            except Exception:
+                continue
 
-            # Copia entidades para o bloco, centralizando
-            for e in msp_etiq:
-                try:
-                    e_copia = copy.deepcopy(e)
-                    e_copia.translate(dx=-centro_x, dy=-centro_y, dz=0)
-                    blk.add_entity(e_copia)
-                except Exception:
-                    continue
-
-            block_cache[nome_arq] = block_name
-
-        # Insere o bloco na posição desejada
-        bloco = block_cache[nome_arq]
-        destino_x, destino_y = COORDENADAS.get(posicao, (0, 0))
-        msp_saida.add_blockref(bloco, insert=(destino_x, destino_y))
-
-    # Salva DXF final
-    doc_saida.saveas(caminho_saida)
+    # Salva o DXF resultante
+    doc.saveas(caminho_saida)
