@@ -1,9 +1,8 @@
-
 import ezdxf
 from google_drive import baixar_arquivo_drive
+import copy
 
 COORDENADAS = {
-    0: (0.0, 0.0),
     1: (99.5, 113.9), 2: (253.0, 113.9), 3: (406.5, 113.9), 4: (560.0, 113.9),
     5: (713.5, 113.9), 6: (867.0, 113.9), 7: (99.5, 311.7), 8: (253.0, 311.7),
     9: (406.5, 311.7), 10: (560.0, 311.7), 11: (713.5, 311.7), 12: (867.0, 311.7),
@@ -19,13 +18,12 @@ POSICOES_BASE = [
 ]
 
 def calcular_centro(msp):
-    min_x, min_y, max_x, max_y = None, None, None, None
+    min_x = min_y = max_x = max_y = None
     for e in msp:
         try:
             bbox = e.bbox()
             if bbox.extmin and bbox.extmax:
-                exmin = bbox.extmin
-                exmax = bbox.extmax
+                exmin, exmax = bbox.extmin, bbox.extmax
                 if min_x is None:
                     min_x, min_y = exmin.x, exmin.y
                     max_x, max_y = exmax.x, exmax.y
@@ -38,9 +36,7 @@ def calcular_centro(msp):
             continue
     if min_x is None:
         return (0, 0)
-    centro_x = (min_x + max_x) / 2
-    centro_y = (min_y + max_y) / 2
-    return (centro_x, centro_y)
+    return ((min_x + max_x) / 2, (min_y + max_y) / 2)
 
 def adicionar_marca(msp, x, y, tamanho=17):
     half = tamanho / 2
@@ -54,38 +50,34 @@ def adicionar_marca(msp, x, y, tamanho=17):
     ], dxfattribs={"color": cor_amarela, "closed": True})
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
-    # Inserir temporariamente o arquivo da posição 1 em (0, 0)
-    pos1 = next((a for a in lista_arquivos if a.posicao == 1), None)
-    entidades_temp = []
-    if pos1:
-        from copy import deepcopy
-        temp_item = deepcopy(pos1)
-        temp_item.posicao = 0
-        lista_arquivos.insert(0, temp_item)
-
+    # Cria novo documento para saída
     doc_saida = ezdxf.new()
     msp_saida = doc_saida.modelspace()
 
+    # Adiciona marcações de base
     for x, y in POSICOES_BASE:
         adicionar_marca(msp_saida, x, y)
 
+    # Insere cada etiqueta na posição centralizada
     for item in lista_arquivos:
         arq_path = baixar_arquivo_drive(item.nome, subpasta="arquivos padronizados")
         doc_etiqueta = ezdxf.readfile(arq_path)
         msp_etiqueta = doc_etiqueta.modelspace()
 
         centro_x, centro_y = calcular_centro(msp_etiqueta)
-        destino_x, destino_y = COORDENADAS[item.posicao]
+        destino_x, destino_y = COORDENADAS.get(item.posicao, (0, 0))
 
         dx = destino_x - centro_x
         dy = destino_y - centro_y
 
         for entidade in list(msp_etiqueta):
             try:
-                nova = entidade.copy()
-                nova.translate(dx=dx, dy=dy, dz=0)
+                # Usa deepcopy para garantir nova instância
+                nova = copy.deepcopy(entidade)
+                nova.translate(dx, dy, 0)
                 msp_saida.add_entity(nova)
             except Exception:
                 continue
 
+    # Salva o arquivo final
     doc_saida.saveas(caminho_saida)
