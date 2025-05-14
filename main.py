@@ -19,7 +19,7 @@ def compor(entrada: Entrada):
     existentes = listar_arquivos_existentes()
     hoje = datetime.now().strftime("%d-%m-%Y")
     prefixo = "Plano de corte"
-    resultados = []
+    planos = []  # lista de dicts {nome, url}
 
     # encontra o primeiro contador livre
     contador = 1
@@ -46,6 +46,6 @@ def compor(entrada: Entrada):
         compor_dxf_com_base(chunk_objs, path_saida)
 
         url = upload_to_drive(path_saida, nome_saida)
-        resultados.append(url)
+        planos.append({"nome": nome_saida, "url": url})
 
-    return {"urls": resultados}
+    return {"plans": planos}
