@@ -40,6 +40,7 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
 
     # Tentativas de caminhos de fontes TrueType
     font_paths = [
+        './DejaVuSans.ttf',  # bundle this TTF in your project root
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
