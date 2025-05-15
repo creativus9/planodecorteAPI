@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from compose_dxf import compor_dxf_com_base
-from google_drive import upload_to_drive, listar_arquivos_existentes
+from google_drive import upload_to_drive, listar_arquivos_existentes, mover_arquivos_antigos
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -19,7 +19,7 @@ def compor(entrada: Entrada):
     existentes = listar_arquivos_existentes()
     hoje = datetime.now().strftime("%d-%m-%Y")
     prefixo = "Plano de corte"
-    planos = []  # lista de dicts {nome, url}
+    planos: list[dict] = []  # lista de dicts {nome, url}
 
     # encontra o primeiro contador livre
     contador = 1
@@ -49,3 +49,9 @@ def compor(entrada: Entrada):
         planos.append({"nome": nome_saida, "url": url})
 
     return {"plans": planos}
+
+@app.post("/mover-antigos")
+def mover_antigos():
+    """Move arquivos de planos de corte antigos para a subpasta 'arquivo morto'."""
+    moved = mover_arquivos_antigos()
+    return {"moved": moved}
