@@ -34,15 +34,28 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
     img = Image.new('RGB', (w_px, h_px + margin), 'white')
     draw = ImageDraw.Draw(img)
 
-    # Caminho de fonte TrueType (ajuste se necessário)
-    font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
-    title_size = 72  # ajuste para o título
-    letter_size = 72  # ajuste para as letras dentro dos retângulos
-    if os.path.exists(font_path):
-        title_font = ImageFont.truetype(font_path, size=title_size)
-        letter_font = ImageFont.truetype(font_path, size=letter_size)
-    else:
-        print(f"[WARN] Fonte não encontrada em {font_path}, usando padrão." )
+    # Tamanhos de fonte configuráveis
+    title_size = 72  # ajuste tamanho do título aqui
+    letter_size = 72  # ajuste tamanho das letras aqui
+
+    # Tentativas de caminhos de fontes TrueType
+    font_paths = [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+    ]
+    title_font = letter_font = None
+    for fp in font_paths:
+        if os.path.exists(fp):
+            try:
+                title_font = ImageFont.truetype(fp, title_size)
+                letter_font = ImageFont.truetype(fp, letter_size)
+                print(f"[INFO] Fonte carregada de: {fp}")
+                break
+            except Exception:
+                continue
+    if title_font is None:
+        print(f"[WARN] Nenhuma fonte TrueType encontrada, usando padrão.")
         title_font = ImageFont.load_default()
         letter_font = ImageFont.load_default()
 
