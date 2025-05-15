@@ -35,7 +35,7 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
     draw = ImageDraw.Draw(img)
 
     # Tamanhos de fonte configuráveis
-    title_size = 72  # ajuste tamanho do título aqui
+    title_size = 48  # ajuste tamanho do título aqui
     letter_size = 72  # ajuste tamanho das letras aqui
 
     # Tentativas de caminhos de fontes TrueType
