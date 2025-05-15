@@ -22,7 +22,7 @@ ETIQ_LX_MM, ETIQ_LY_MM = 130, 190    # mm
 def gerar_imagem_plano(caminho_dxf, lista_arquivos):
     """
     Gera e salva uma imagem PNG ilustrativa do plano de corte.
-    Tanto o título quanto as letras usam fontes independentes, tamanho configurável.
+    Título e letras usam fontes independentes com tamanho configurável.
     """
     png_path = caminho_dxf.replace('.dxf', '.png')
     # Escala mm->px baseado em 1000px de largura
@@ -33,14 +33,17 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
 
     img = Image.new('RGB', (w_px, h_px + margin), 'white')
     draw = ImageDraw.Draw(img)
-    # Fontes independentes, ambas default para size=72
-    try:
-        title_font = ImageFont.truetype('DejaVuSans.ttf', size=72)
-    except IOError:
+
+    # Caminho de fonte TrueType (ajuste se necessário)
+    font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+    title_size = 72  # ajuste para o título
+    letter_size = 72  # ajuste para as letras dentro dos retângulos
+    if os.path.exists(font_path):
+        title_font = ImageFont.truetype(font_path, size=title_size)
+        letter_font = ImageFont.truetype(font_path, size=letter_size)
+    else:
+        print(f"[WARN] Fonte não encontrada em {font_path}, usando padrão." )
         title_font = ImageFont.load_default()
-    try:
-        letter_font = ImageFont.truetype('DejaVuSans.ttf', size=72)
-    except IOError:
         letter_font = ImageFont.load_default()
 
     # Desenhar título centralizado
@@ -60,14 +63,12 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
         key = os.path.splitext(name)[0][-3:].upper()
         color = COLOR_MAP.get(key, '#CCCCCC')
         letter = LETTER_MAP.get(key, '?')
-        # Centro em px
         xm, ym = COORDENADAS.get(pos, (0, 0))
         cx = xm * scale
         cy = h_px - (ym * scale) + margin
         left, top = cx - half_w, cy - half_h
         right, bottom = cx + half_w, cy + half_h
         draw.rectangle([left, top, right, bottom], fill=color)
-        # Letra
         bbox2 = draw.textbbox((0, 0), letter, font=letter_font)
         lw, lh = bbox2[2] - bbox2[0], bbox2[3] - bbox2[1]
         draw.text((cx - lw / 2, cy - lh / 2), letter, fill='black', font=letter_font)
