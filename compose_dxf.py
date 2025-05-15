@@ -12,40 +12,42 @@ COORDENADAS = {
     13: (99.5, 509.5), 14: (253.0, 509.5), 15: (406.5, 509.5), 16: (560.0, 509.5),
     17: (713.5, 509.5), 18: (867.0, 509.5),
 }
-# Pontos de marcação no DXF (em mm)
 POSICOES_BASE = [(8.5, 8.5), (961.5, 8.5), (8.5, 771.5), (961.5, 771.5)]
-# Mapeamento de cores por sufixo do nome (últimas 3 letras)
 COLOR_MAP = {'DOU': '#FFD700', 'ROS': '#B76E79', 'PRA': '#C0C0C0'}
 LETTER_MAP = {'DOU': 'D', 'ROS': 'R', 'PRA': 'P'}
-
-# Dimensões do plano (mm)
-PLANO_LX_MM, PLANO_LY_MM = 970, 780
-# Dimensões da etiqueta (mm)
-ETIQ_LX_MM, ETIQ_LY_MM = 130, 190
+PLANO_LX_MM, PLANO_LY_MM = 970, 780  # mm
+ETIQ_LX_MM, ETIQ_LY_MM = 130, 190    # mm
 
 
 def gerar_imagem_plano(caminho_dxf, lista_arquivos):
+    """
+    Gera e salva uma imagem PNG ilustrativa do plano de corte.
+    Tanto o título quanto as letras usam fontes independentes, tamanho configurável.
+    """
     png_path = caminho_dxf.replace('.dxf', '.png')
-
-    # Escala: mm -> px (1000px de largura)
+    # Escala mm->px baseado em 1000px de largura
     scale = 1000 / PLANO_LX_MM
     w_px = int(round(PLANO_LX_MM * scale))
     h_px = int(round(PLANO_LY_MM * scale))
-    margin = 80  # espaço para o título
+    margin = 80
 
     img = Image.new('RGB', (w_px, h_px + margin), 'white')
     draw = ImageDraw.Draw(img)
-    # Fonte maior para o título
+    # Fontes independentes, ambas default para size=72
     try:
-        font = ImageFont.truetype('DejaVuSans.ttf', size=36)
+        title_font = ImageFont.truetype('DejaVuSans.ttf', size=72)
     except IOError:
-        font = ImageFont.load_default()
+        title_font = ImageFont.load_default()
+    try:
+        letter_font = ImageFont.truetype('DejaVuSans.ttf', size=72)
+    except IOError:
+        letter_font = ImageFont.load_default()
 
-    # Desenhar título
+    # Desenhar título centralizado
     title = os.path.basename(caminho_dxf)
-    bbox = draw.textbbox((0, 0), title, font=font)
+    bbox = draw.textbbox((0, 0), title, font=title_font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(((w_px - tw) / 2, (margin - th) / 2), title, fill='black', font=font)
+    draw.text(((w_px - tw) / 2, (margin - th) / 2), title, fill='black', font=title_font)
 
     # Dimensões da etiqueta em px
     half_w = (ETIQ_LX_MM / 2) * scale
@@ -58,26 +60,19 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
         key = os.path.splitext(name)[0][-3:].upper()
         color = COLOR_MAP.get(key, '#CCCCCC')
         letter = LETTER_MAP.get(key, '?')
-
-        # Ponto central em mm -> px
-        x_mm, y_mm = COORDENADAS.get(pos, (0, 0))
-        cx = x_mm * scale
-        # converter Y para o sistema do PIL (origem no topo)
-        cy = h_px - (y_mm * scale) + margin
-
-        left = cx - half_w
-        top = cy - half_h
-        right = cx + half_w
-        bottom = cy + half_h
-
+        # Centro em px
+        xm, ym = COORDENADAS.get(pos, (0, 0))
+        cx = xm * scale
+        cy = h_px - (ym * scale) + margin
+        left, top = cx - half_w, cy - half_h
+        right, bottom = cx + half_w, cy + half_h
         draw.rectangle([left, top, right, bottom], fill=color)
-
-        # Desenhar letra no centro
-        bbox2 = draw.textbbox((0, 0), letter, font=font)
+        # Letra
+        bbox2 = draw.textbbox((0, 0), letter, font=letter_font)
         lw, lh = bbox2[2] - bbox2[0], bbox2[3] - bbox2[1]
-        draw.text((cx - lw / 2, cy - lh / 2), letter, fill='black', font=font)
+        draw.text((cx - lw / 2, cy - lh / 2), letter, fill='black', font=letter_font)
 
-    # Salvar PNG e enviar ao Drive
+    # Salvar e enviar ao Drive
     os.makedirs(os.path.dirname(caminho_dxf) or '.', exist_ok=True)
     img.save(png_path)
     print(f"[INFO] PNG salvo: {png_path}")
@@ -123,12 +118,8 @@ def adicionar_marca(msp, x, y, tamanho=17):
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
     doc = ezdxf.new()
     msp = doc.modelspace()
-
-    # Marcar base
     for x, y in POSICOES_BASE:
         adicionar_marca(msp, x, y)
-
-    # Inserção na posição 1
     first = next((it for it in lista_arquivos if it.posicao == 1), None)
     if first:
         path = baixar_arquivo_drive(first.nome, subpasta='arquivos padronizados')
@@ -142,13 +133,10 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
                 msp.add_entity(ne)
             except:
                 pass
-
-    # Agrupar demais e inserir via blocos
     grupos = defaultdict(list)
     for it in lista_arquivos:
         if it.posicao != 1:
             grupos[it.nome].append(it.posicao)
-
     for nome, poses in grupos.items():
         path = baixar_arquivo_drive(nome, subpasta='arquivos padronizados')
         eb = ezdxf.readfile(path).modelspace()
@@ -163,8 +151,6 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
                 pass
         for pos in poses:
             msp.add_blockref(blk.name, insert=COORDENADAS[pos])
-
-    # Salvar DXF e gerar PNG
     os.makedirs(os.path.dirname(caminho_saida) or '.', exist_ok=True)
     doc.saveas(caminho_saida)
     gerar_imagem_plano(caminho_saida, lista_arquivos)
