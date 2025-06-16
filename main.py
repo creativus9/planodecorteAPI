@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
-from compose_dxf_32 import compor_dxf_com_base as compor_dxf_com_base_32
+from compose_dxf_32 import compor_dxf_com_base_32
 from google_drive import upload_to_drive, listar_arquivos_existentes
 from datetime import datetime
 from types import SimpleNamespace
