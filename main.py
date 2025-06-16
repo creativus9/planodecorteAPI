@@ -11,10 +11,18 @@ app = FastAPI()
 class Entrada(BaseModel):
     arquivos: list[str]                # lista de nomes de arquivos DXF
     nome_arquivo: str = None           # nome personalizado do plano (opcional)
-    maquina: str = "18"                # "18" ou "32" (padrão: 18 posições)
 
 @app.post("/compor")
 def compor(entrada: Entrada):
+    # Máquina 02: 18 posições
+    return gerar_planos(entrada, max_por_plano=18, compor_fn=compor_dxf_com_base_18)
+
+@app.post("/compor32")
+def compor32(entrada: Entrada):
+    # Máquina 01: 32 posições
+    return gerar_planos(entrada, max_por_plano=32, compor_fn=compor_dxf_com_base_32)
+
+def gerar_planos(entrada, max_por_plano, compor_fn):
     total = len(entrada.arquivos)
     if total == 0:
         raise HTTPException(status_code=400, detail="Nenhum arquivo fornecido.")
@@ -23,13 +31,6 @@ def compor(entrada: Entrada):
     hoje = datetime.now().strftime("%d-%m-%Y")
     prefixo = entrada.nome_arquivo if entrada.nome_arquivo else "Plano de corte"
     planos = []
-
-    if entrada.maquina == "32":
-        max_por_plano = 32
-        compor_fn = compor_dxf_com_base_32
-    else:
-        max_por_plano = 18
-        compor_fn = compor_dxf_com_base_18
 
     # encontra o primeiro contador livre para evitar sobrescrever arquivos existentes
     contador = 1
