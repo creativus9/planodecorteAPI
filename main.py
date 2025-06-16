@@ -5,56 +5,56 @@ from compose_dxf_32 import compor_dxf_com_base_32
 from google_drive import upload_to_drive, listar_arquivos_existentes
 from datetime import datetime
 from types import SimpleNamespace
+import os
 
 app = FastAPI()
 
 class Entrada(BaseModel):
-    arquivos: list[str]                # lista de nomes de arquivos DXF
-    nome_arquivo: str = None           # nome personalizado do plano (opcional)
+    arquivos: list[str]
+    nome_arquivo: str = None
+    maquina: str = "18"
 
 @app.post("/compor")
 def compor(entrada: Entrada):
-    # Máquina 02: 18 posições
-    return gerar_planos(entrada, max_por_plano=18, compor_fn=compor_dxf_com_base_18)
-
-@app.post("/compor32")
-def compor32(entrada: Entrada):
-    # Máquina 01: 32 posições
-    return gerar_planos(entrada, max_por_plano=32, compor_fn=compor_dxf_com_base_32)
-
-def gerar_planos(entrada, max_por_plano, compor_fn):
     total = len(entrada.arquivos)
     if total == 0:
         raise HTTPException(status_code=400, detail="Nenhum arquivo fornecido.")
 
     existentes = listar_arquivos_existentes()
-    hoje = datetime.now().strftime("%d-%m-%Y")
-    prefixo = entrada.nome_arquivo if entrada.nome_arquivo else "Plano de corte"
+    nome_base = entrada.nome_arquivo  # Já deve vir, ex: Plano de corte 13 16-06-2025.dxf
+
+    if entrada.maquina == "32":
+        max_por_plano = 32
+        compor_fn = compor_dxf_com_base_32
+    else:
+        max_por_plano = 18
+        compor_fn = compor_dxf_com_base_18
+
     planos = []
-
-    # encontra o primeiro contador livre para evitar sobrescrever arquivos existentes
-    contador = 1
-    while True:
-        nome_teste = f"{prefixo} {contador:02d} {hoje}.dxf"
-        if nome_teste not in existentes:
-            break
-        contador += 1
-
     num_planos = (total + max_por_plano - 1) // max_por_plano
+
     for i in range(num_planos):
         chunk_names = entrada.arquivos[i*max_por_plano : (i+1)*max_por_plano]
         chunk_objs = [
             SimpleNamespace(nome=name, posicao=index + 1)
             for index, name in enumerate(chunk_names)
         ]
+        if i == 0:
+            nome_saida = nome_base
+        else:
+            # Adiciona _02, _03, ... ANTES da extensão .dxf
+            nome_saida = nome_base.replace('.dxf', f'_{i+1:02d}.dxf')
 
-        nome_saida = f"{prefixo} {contador:02d} {hoje}.dxf"
-        existentes.append(nome_saida)
-        contador += 1
+        # Evita sobrescrever existentes (adicionando mais sufixo se necessário)
+        nome_saida_livre = nome_saida
+        contador_extra = 2
+        while nome_saida_livre in existentes:
+            nome_saida_livre = nome_base.replace('.dxf', f'_{i+contador_extra:02d}.dxf')
+            contador_extra += 1
 
-        path_saida = f"/tmp/{nome_saida}"
+        path_saida = f"/tmp/{nome_saida_livre}"
         compor_fn(chunk_objs, path_saida)
-        url = upload_to_drive(path_saida, nome_saida)
-        planos.append({"nome": nome_saida, "url": url})
+        url = upload_to_drive(path_saida, nome_saida_livre)
+        planos.append({"nome": nome_saida_livre, "url": url})
 
     return {"plans": planos}
