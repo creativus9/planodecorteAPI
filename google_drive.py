@@ -96,3 +96,16 @@ def mover_arquivos_antigos():
                     ).execute()
                     moved += 1
     return moved
+
+def arquivo_existe_drive(nome_arquivo, subpasta="arquivos padronizados"):
+    """
+    Verifica se um arquivo existe no Google Drive tentando baixar.
+    Retorna True se existe, False se não.
+    """
+    try:
+        baixar_arquivo_drive(nome_arquivo, subpasta=subpasta)
+        return True
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
