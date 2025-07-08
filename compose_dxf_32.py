@@ -5,7 +5,6 @@ from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 
 # NOVAS Coordenadas das etiquetas (em mm) para 32 posições
-
 COORDENADAS = {
     1:  (111.75, 153.95),   2:  (265.25, 153.95),   3:  (418.75, 153.95),   4:  (572.25, 153.95),
     5:  (725.75, 153.95),   6:  (879.25, 153.95),   7:  (1032.75,153.95),   8:  (1186.25,153.95),
@@ -17,11 +16,7 @@ COORDENADAS = {
     29: (725.75, 747.95),  30:  (879.25, 747.95),  31:  (1032.75,747.95),  32:  (1186.25,747.95),
 }
 
-
-# NOVA área útil do plano
 PLANO_LX_MM, PLANO_LY_MM = 1300, 900  # mm
-
-# Mantém tamanho dos quadrados e etiquetas igual, ajuste se quiser
 POSICOES_BASE = [(8.5, 8.5), (1291.5, 8.5), (8.5, 891.5), (1291.5, 891.5)]
 COLOR_MAP = {'DOU': '#FFD700', 'ROS': '#B76E79', 'PRA': '#C0C0C0'}
 LETTER_MAP = {'DOU': 'D', 'ROS': 'R', 'PRA': 'P'}
@@ -71,10 +66,24 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
 
     for item in lista_arquivos:
         pos = item.posicao
-        name = item.nome
-        key = os.path.splitext(name)[0][-3:].upper()
-        color = COLOR_MAP.get(key, '#CCCCCC')
-        letter = LETTER_MAP.get(key, '?')
+        name = item.nome.upper()
+        # 1. Primeiro tenta as três últimas letras
+        key = os.path.splitext(name)[0][-3:]
+        color = COLOR_MAP.get(key)
+        letter = LETTER_MAP.get(key)
+        # 2. Se não achou, procura -DOU, -ROS, -PRA em qualquer lugar
+        if color is None or letter is None:
+            if '-DOU' in name:
+                key = 'DOU'
+            elif '-ROS' in name:
+                key = 'ROS'
+            elif '-PRA' in name:
+                key = 'PRA'
+            else:
+                key = None
+            color = COLOR_MAP.get(key, '#CCCCCC')
+            letter = LETTER_MAP.get(key, '?')
+
         xm, ym = COORDENADAS.get(pos, (0, 0))
         cx = xm * scale
         cy = h_px - (ym * scale) + margin
