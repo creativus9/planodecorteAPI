@@ -18,7 +18,6 @@ LETTER_MAP = {'DOU': 'D', 'ROS': 'R', 'PRA': 'P'}
 PLANO_LX_MM, PLANO_LY_MM = 970, 780  # mm
 ETIQ_LX_MM, ETIQ_LY_MM = 130, 190    # mm
 
-
 def gerar_imagem_plano(caminho_dxf, lista_arquivos):
     """
     Gera e salva uma imagem PNG ilustrativa do plano de corte.
@@ -40,7 +39,7 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
 
     # Tentativas de caminhos de fontes TrueType
     font_paths = [
-        './DejaVuSans.ttf',  # bundle this TTF in your project root
+        './DejaVuSans.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
@@ -73,10 +72,26 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
     # Desenhar retângulos e letras
     for item in lista_arquivos:
         pos = item.posicao
-        name = item.nome
-        key = os.path.splitext(name)[0][-3:].upper()
-        color = COLOR_MAP.get(key, '#CCCCCC')
-        letter = LETTER_MAP.get(key, '?')
+        name = item.nome.upper()
+
+        # 1. Primeiro tenta as três últimas letras antes do .dxf
+        key = os.path.splitext(name)[0][-3:]
+        color = COLOR_MAP.get(key)
+        letter = LETTER_MAP.get(key)
+
+        # 2. Se não achou, procura -DOU, -ROS, -PRA em qualquer parte do nome
+        if color is None or letter is None:
+            if '-DOU' in name:
+                key = 'DOU'
+            elif '-ROS' in name:
+                key = 'ROS'
+            elif '-PRA' in name:
+                key = 'PRA'
+            else:
+                key = None
+            color = COLOR_MAP.get(key, '#CCCCCC')
+            letter = LETTER_MAP.get(key, '?')
+
         xm, ym = COORDENADAS.get(pos, (0, 0))
         cx = xm * scale
         cy = h_px - (ym * scale) + margin
@@ -99,7 +114,6 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
 
     return png_path
 
-
 def calcular_centro(msp):
     min_x = min_y = max_x = max_y = None
     for e in msp:
@@ -121,14 +135,12 @@ def calcular_centro(msp):
         return 0, 0
     return ((min_x + max_x) / 2, (min_y + max_y) / 2)
 
-
 def adicionar_marca(msp, x, y, tamanho=17):
     h = tamanho / 2
     msp.add_lwpolyline(
         [(x - h, y - h), (x + h, y - h), (x + h, y + h), (x - h, y + h), (x - h, y - h)],
         dxfattribs={'color': 2, 'closed': True}
     )
-
 
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
     doc = ezdxf.new()
