@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware # Importado para permitir req
 # Importações das funções de composição DXF e de interação com o Google Drive
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
 from compose_dxf_32 import compor_dxf_com_base_32
-from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivo_drive # arquivo_existe_drive e mover_arquivo_drive importados diretamente
+# Agora importamos 'mover_arquivos_antigos' corretamente
+from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos
 
 from datetime import datetime
 from types import SimpleNamespace
@@ -147,29 +148,11 @@ def compor(entrada: Entrada):
 def mover_antigos():
     """
     Endpoint para mover arquivos DXF antigos para uma subpasta de "arquivos antigos".
-    Esta é uma implementação de exemplo. Você precisará definir a lógica
-    para identificar quais arquivos são "antigos" e para qual pasta eles devem ser movidos.
+    Esta função agora chama a lógica implementada em google_drive.py.
     """
-    # Exemplo de lógica:
-    # 1. Listar arquivos da pasta principal (ou de uma pasta específica)
-    # 2. Iterar sobre eles e aplicar uma regra (ex: data de modificação, nome)
-    # 3. Mover os arquivos que se encaixam na regra para a pasta de "arquivos antigos"
-
-    # Para este exemplo, vamos simular o movimento de alguns arquivos.
-    # Você precisará adaptar esta lógica para suas necessidades reais.
-    
-    # Exemplo de como você poderia usar a função mover_arquivo_drive:
-    # moved_count = 0
-    # try:
-    #     # Supondo que você tenha uma lista de arquivos para mover
-    #     arquivos_para_mover = ["arquivo_antigo_1.dxf", "arquivo_antigo_2.dxf"]
-    #     for arquivo in arquivos_para_mover:
-    #         # Certifique-se de que 'mover_arquivo_drive' existe e funciona conforme o esperado
-    #         mover_arquivo_drive(arquivo, pasta_origem="pasta_dxf_principal", pasta_destino="arquivos antigos")
-    #         moved_count += 1
-    # except Exception as e:
-    #     print(f"Erro ao mover arquivos: {e}")
-    #     raise HTTPException(status_code=500, detail=f"Erro ao mover arquivos: {e}")
-
-    # Retorno de exemplo:
-    return {"moved": 0} # Substitua 0 pelo número real de arquivos movidos
+    try:
+        moved_count = mover_arquivos_antigos() # Chama a função do google_drive.py
+        return {"moved": moved_count}
+    except Exception as e:
+        print(f"Erro ao mover arquivos: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao mover arquivos: {e}")
