@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware # Importe o CORSMiddleware
 
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
-from new_code_file import compor_dxf_com_base_32 # Renomeado de compose_dxf_32 para new_code_file
+from compose_dxf_32 import compor_dxf_com_base_32 # CORRIGIDO: Renomeado de new_code_file para compose_dxf_32
 from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive # Importa arquivo_existe_drive
 from datetime import datetime
 from types import SimpleNamespace
@@ -115,11 +115,11 @@ def compor(entrada: Entrada):
         # A forma mais robusta seria:
         # url_dxf, url_png = compor_fn(chunk_objs, path_saida) # compor_fn retorna ambos os URLs
         # Mas como a estrutura atual não permite isso facilmente, vamos adicionar um placeholder para o PNG.
-        # Idealmente, a função `gerar_imagem_plano` em compose_dxf.py e new_code_file.py
+        # Idealmente, a função `gerar_imagem_plano` em compose_dxf.py e compose_dxf_32.py
         # deveria retornar o URL do PNG após o upload.
 
         # Para compatibilidade com a estrutura atual, vamos apenas retornar o nome do DXF e um URL de exemplo para o PNG.
-        # VOCÊ PRECISARÁ AJUSTAR SEU `compose_dxf.py` e `new_code_file.py` PARA RETORNAR O URL DO PNG
+        # VOCÊ PRECISARÁ AJUSTAR SEU `compose_dxf.py` e `compose_dxf_32.py` PARA RETORNAR O URL DO PNG
         # DE DENTRO DA FUNÇÃO `gerar_imagem_plano` E PASSÁ-LO ATÉ AQUI.
         # Por agora, vou simular o URL do PNG.
         url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '') # Simulação, precisa ser o URL real do PNG
@@ -127,4 +127,3 @@ def compor(entrada: Entrada):
         planos.append({"nome": nome_saida_livre, "url_dxf": url_dxf, "url_png": url_png_simulado})
 
     return {"plans": planos}
-
