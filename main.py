@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware # Importado para permitir req
 # Importações das funções de composição DXF e de interação com o Google Drive
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
 from compose_dxf_32 import compor_dxf_com_base_32
-from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive # arquivo_existe_drive importado diretamente
+from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivo_drive # arquivo_existe_drive e mover_arquivo_drive importados diretamente
 
 from datetime import datetime
 from types import SimpleNamespace
@@ -19,6 +19,8 @@ app = FastAPI()
 origins = [
     "http://localhost",
     "http://localhost:5173", # O endereço padrão do seu frontend React em desenvolvimento
+    "https://web-production-a828.up.railway.app", # Adicionado para a URL da sua API
+    "https://script.google.com", # Adicionado para o Google Apps Script
     # Se você tiver um domínio de produção para o seu frontend, adicione-o aqui também:
     # "https://seu-dominio-frontend-em-producao.com",
 ]
@@ -135,7 +137,39 @@ def compor(entrada: Entrada):
         url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '') # Simulação: remove '/view' para um URL mais "direto"
 
         # Adiciona os detalhes do plano (nome, URL do DXF e URL simulado do PNG) à lista de planos.
-        planos.append({"nome": nome_saida_livre, "url_dxf": url_dxf, "url_png": url_png_simulado})
+        # O Apps Script espera a chave 'url', então estamos usando 'url_dxf' para isso.
+        planos.append({"nome": nome_saida_livre, "url": url_dxf, "url_png": url_png_simulado})
 
     # Retorna a lista de planos gerados como resposta da API.
     return {"plans": planos}
+
+@app.post("/mover-antigos")
+def mover_antigos():
+    """
+    Endpoint para mover arquivos DXF antigos para uma subpasta de "arquivos antigos".
+    Esta é uma implementação de exemplo. Você precisará definir a lógica
+    para identificar quais arquivos são "antigos" e para qual pasta eles devem ser movidos.
+    """
+    # Exemplo de lógica:
+    # 1. Listar arquivos da pasta principal (ou de uma pasta específica)
+    # 2. Iterar sobre eles e aplicar uma regra (ex: data de modificação, nome)
+    # 3. Mover os arquivos que se encaixam na regra para a pasta de "arquivos antigos"
+
+    # Para este exemplo, vamos simular o movimento de alguns arquivos.
+    # Você precisará adaptar esta lógica para suas necessidades reais.
+    
+    # Exemplo de como você poderia usar a função mover_arquivo_drive:
+    # moved_count = 0
+    # try:
+    #     # Supondo que você tenha uma lista de arquivos para mover
+    #     arquivos_para_mover = ["arquivo_antigo_1.dxf", "arquivo_antigo_2.dxf"]
+    #     for arquivo in arquivos_para_mover:
+    #         # Certifique-se de que 'mover_arquivo_drive' existe e funciona conforme o esperado
+    #         mover_arquivo_drive(arquivo, pasta_origem="pasta_dxf_principal", pasta_destino="arquivos antigos")
+    #         moved_count += 1
+    # except Exception as e:
+    #     print(f"Erro ao mover arquivos: {e}")
+    #     raise HTTPException(status_code=500, detail=f"Erro ao mover arquivos: {e}")
+
+    # Retorno de exemplo:
+    return {"moved": 0} # Substitua 0 pelo número real de arquivos movidos
