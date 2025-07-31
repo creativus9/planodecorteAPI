@@ -3,6 +3,7 @@ import ezdxf
 from google_drive import baixar_arquivo_drive, upload_to_drive
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
+from ezdxf import units # Importe 'units' do ezdxf
 
 # Coordenadas das etiquetas (em mm)
 COORDENADAS = {
@@ -145,6 +146,8 @@ def adicionar_marca(msp, x, y, tamanho=17):
 def compor_dxf_com_base(lista_arquivos, caminho_saida):
     doc = ezdxf.new()
     msp = doc.modelspace()
+    # Define as unidades do documento DXF como milímetros
+    doc.header['$INSUNITS'] = units.MM 
     for x, y in POSICOES_BASE:
         adicionar_marca(msp, x, y)
     first = next((it for it in lista_arquivos if it.posicao == 1), None)
