@@ -132,6 +132,8 @@ def adicionar_marca(msp, x, y, tamanho=17):
 
 def compor_dxf_com_base_32(lista_arquivos, caminho_saida):
     doc = ezdxf.new()
+    # Define a unidade de inserção do DXF para milímetros (4 = mm)
+    doc.header['$INSUNITS'] = 4
     msp = doc.modelspace()
     for x, y in POSICOES_BASE:
         adicionar_marca(msp, x, y)
