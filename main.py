@@ -19,8 +19,8 @@ app = FastAPI()
 # faça requisições para esta API, mesmo que estejam em domínios/portas diferentes.
 origins = [
     "http://localhost",
-    "http://192.168.2.123:5173/",
-    "http://192.168.2.69:5173/",
+    "http://192.168.2.123:5173",
+    "http://192.168.2.69:5173",
     "http://localhost:5173", # O endereço padrão do seu frontend React em desenvolvimento
     "https://web-production-a828.up.railway.app", # Adicionado para a URL da sua API
     "https://script.google.com", # Adicionado para o Google Apps Script
