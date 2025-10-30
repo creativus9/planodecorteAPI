@@ -5,6 +5,7 @@ from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from ezdxf import units # Importe 'units' do ezdxf
 
+
 # Coordenadas das etiquetas (em mm)
 COORDENADAS = {
     1: (99.5, 113.9), 2: (253.0, 113.9), 3: (406.5, 113.9), 4: (560.0, 113.9),
