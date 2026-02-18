@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware # Importado para permitir req
 # Importações das funções de composição DXF e de interação com o Google Drive
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
 from compose_dxf_32 import compor_dxf_com_base_32
+# Importa a nova função para a máquina 32-2
+from compose_dxf_32_2 import compor_dxf_com_base_32_2
+
 # Agora importamos 'mover_arquivos_antigos' corretamente
 from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos
 
@@ -34,7 +37,7 @@ class Entrada(BaseModel):
     Define o modelo de dados para a entrada da requisição POST.
     - arquivos: Lista de nomes de arquivos DXF a serem compostos.
     - nome_arquivo: Nome base para o arquivo DXF de saída (opcional, será gerado se não fornecido).
-    - maquina: Tipo de máquina ("18" ou "32") para determinar o número máximo de arquivos por plano.
+    - maquina: Tipo de máquina ("18", "32" ou "32-2").
     """
     arquivos: list[str]
     nome_arquivo: str = None
@@ -76,7 +79,11 @@ def compor(entrada: Entrada):
     if entrada.maquina == "32":
         max_por_plano = 32
         compor_fn = compor_dxf_com_base_32
+    elif entrada.maquina == "32-2":
+        max_por_plano = 32
+        compor_fn = compor_dxf_com_base_32_2
     else:
+        # Padrão ou máquina 18
         max_por_plano = 18
         compor_fn = compor_dxf_com_base_18
 
