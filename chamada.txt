@@ -1,0 +1,106 @@
+Documentação da API - Composição DXF
+
+Esta documentação descreve o funcionamento do endpoint principal da API responsável por agrupar arquivos DXF e gerar imagens PNG do plano de corte.
+
+Endpoint: /compor
+Método: POST
+Header Obrigatório: Content-Type: application/json
+
+A API agora suporta dois modos de funcionamento: o Modo Padrão (Jeito Antigo), que utiliza os layouts pré-configurados (chumbados) das máquinas, e o Modo Universal (Jeito Novo), que permite total liberdade para definir o tamanho da chapa e a posição de cada peça.
+
+1. O Jeito Antigo (Modo Padrão / Máquinas Específicas)
+
+Este é o método original. Ele foi mantido intacto para garantir que nenhuma integração atual quebre (100% de retrocompatibilidade). Neste modo, a API decide o agrupamento e o tamanho da chapa com base no nome da máquina informada.
+
+Formato do JSON (Request)
+
+{
+  "arquivos": [
+    "peca1-DOU.dxf", 
+    "peca2-ROS.dxf", 
+    "peca3-PRA.dxf"
+  ],
+  "maquina": "32",
+  "nome_arquivo": "Plano de corte 13 16-06-2025.dxf"
+}
+
+
+Parâmetros:
+
+arquivos (obrigatório): Lista (Array) com os nomes dos arquivos DXF que já estão no seu Google Drive (na subpasta "arquivos padronizados").
+
+maquina (opcional): Define qual layout usar. Opções válidas: "18", "32" ou "32-2". Se não for enviado, o padrão é "18".
+
+nome_arquivo (opcional): O nome do arquivo DXF final que será gerado. Se a API precisar gerar mais de um plano, ela adicionará um sufixo numérico (ex: _02.dxf).
+
+Comportamento:
+
+A API vai usar as coordenadas X e Y, o tamanho da chapa e o limite máximo de peças por plano gravados nos arquivos do sistema para a máquina escolhida.
+
+2. O Jeito Novo (Modo Universal / Dinâmico)
+
+Neste modo, você ignora o parâmetro maquina e informa diretamente para a API qual é o tamanho da chapa que você deseja usar e onde exatamente cada peça deve ser inserida.
+
+Formato do JSON (Request)
+
+{
+  "arquivos": [
+    "peca1-DOU.dxf", 
+    "peca2-ROS.dxf", 
+    "peca3-PRA.dxf"
+  ],
+  "tamanho_chapa": [1500.0, 1000.0],
+  "coordenadas_customizadas": {
+    "1": [100.5, 200.0],
+    "2": [300.0, 200.0],
+    "3": [500.0, 200.0]
+  },
+  "nome_arquivo": "Plano Customizado.dxf"
+}
+
+
+Parâmetros:
+
+arquivos (obrigatório): A lista de arquivos a serem compostos. A ordem aqui importa, pois o 1º arquivo usará a coordenada "1", o 2º arquivo usará a coordenada "2", e assim por diante.
+
+tamanho_chapa (obrigatório neste modo): Uma lista com dois números representando a Largura e a Altura da chapa em milímetros [L, A]. Ex: [1500, 1000].
+
+coordenadas_customizadas (obrigatório neste modo): Um objeto (dicionário) onde a chave é a posição da peça (1, 2, 3...) e o valor é uma lista com as coordenadas [X, Y] do ponto de inserção.
+
+nome_arquivo (opcional): Mesmo comportamento do modo antigo.
+
+Comportamento Inteligente (Marcas de Base / Cruzetas):
+
+Você não precisa informar onde ficam os pequenos quadrados de alinhamento dos cantos. A API é inteligente o suficiente para pegar o seu tamanho_chapa e deduzir automaticamente uma margem de segurança de 8.5 mm de cada borda para desenhar as marcas de base perfeitamente esquadrejadas.
+
+O limite de peças por plano (a hora de quebrar para o próximo arquivo _02.dxf) será definido automaticamente pela quantidade de chaves que você enviar no objeto coordenadas_customizadas.
+
+3. Resposta da API (Para ambos os modos)
+
+Independente de como você enviou a requisição, se a geração for bem sucedida, a API sempre retornará a mesma estrutura: uma lista dos planos gerados contendo os links públicos do Google Drive.
+
+Formato do JSON (Response)
+
+Status HTTP: 200 OK
+
+{
+  "plans": [
+    {
+      "nome": "Plano de corte 13 16-06-2025.dxf",
+      "url": "[https://drive.google.com/file/d/1A2B3C4D5E/view](https://drive.google.com/file/d/1A2B3C4D5E/view)",
+      "url_png": "[https://drive.google.com/file/d/1A2B3C4D5E](https://drive.google.com/file/d/1A2B3C4D5E)"
+    },
+    {
+      "nome": "Plano de corte 13 16-06-2025_02.dxf",
+      "url": "[https://drive.google.com/file/d/9Z8Y7X6W5V/view](https://drive.google.com/file/d/9Z8Y7X6W5V/view)",
+      "url_png": "[https://drive.google.com/file/d/9Z8Y7X6W5V](https://drive.google.com/file/d/9Z8Y7X6W5V)"
+    }
+  ]
+}
+
+
+Tratamento de Erros:
+
+Status 400: Retornado caso o array "arquivos" seja enviado vazio.
+
+Status 404: Retornado caso algum dos arquivos DXF solicitados não seja encontrado no Google Drive. A resposta incluirá os nomes dos arquivos que falharam para facilitar a depuração.
