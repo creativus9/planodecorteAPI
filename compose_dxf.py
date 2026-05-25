@@ -20,16 +20,22 @@ LETTER_MAP = {'DOU': 'D', 'ROS': 'R', 'PRA': 'P'}
 PLANO_LX_MM, PLANO_LY_MM = 970, 780  # mm
 ETIQ_LX_MM, ETIQ_LY_MM = 130, 190    # mm
 
-def gerar_imagem_plano(caminho_dxf, lista_arquivos):
+def gerar_imagem_plano(caminho_dxf, lista_arquivos, custom_coords=None, custom_chapa=None):
     """
     Gera e salva uma imagem PNG ilustrativa do plano de corte.
-    Título e letras usam fontes independentes com tamanho configurável.
+    Agora aceita coordenadas e tamanho de chapa customizados para o Motor Universal.
     """
     png_path = caminho_dxf.replace('.dxf', '.png')
+    
+    # Define quais variáveis usar (as customizadas ou as padrões)
+    plano_lx = custom_chapa[0] if custom_chapa else PLANO_LX_MM
+    plano_ly = custom_chapa[1] if custom_chapa else PLANO_LY_MM
+    coords_reais = custom_coords if custom_coords else COORDENADAS
+
     # Escala mm->px baseado em 1000px de largura
-    scale = 1000 / PLANO_LX_MM
-    w_px = int(round(PLANO_LX_MM * scale))
-    h_px = int(round(PLANO_LY_MM * scale))
+    scale = 1000 / plano_lx
+    w_px = int(round(plano_lx * scale))
+    h_px = int(round(plano_ly * scale))
     margin = 80
 
     img = Image.new('RGB', (w_px, h_px + margin), 'white')
@@ -94,7 +100,7 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos):
             color = COLOR_MAP.get(key, '#CCCCCC')
             letter = LETTER_MAP.get(key, '?')
 
-        xm, ym = COORDENADAS.get(pos, (0, 0))
+        xm, ym = coords_reais.get(pos, (0, 0)) # Usa as coordenadas dinâmicas ou padrão
         cx = xm * scale
         cy = h_px - (ym * scale) + margin
         left, top = cx - half_w, cy - half_h
@@ -144,19 +150,36 @@ def adicionar_marca(msp, x, y, tamanho=17):
         dxfattribs={'color': 2, 'closed': True}
     )
 
-def compor_dxf_com_base(lista_arquivos, caminho_saida):
+def compor_dxf_com_base(lista_arquivos, caminho_saida, custom_coords=None, custom_chapa=None):
     doc = ezdxf.new()
     msp = doc.modelspace()
     # Define as unidades do documento DXF como milímetros
     doc.header['$INSUNITS'] = units.MM 
-    for x, y in POSICOES_BASE:
+    
+    # Se customizado, calcula dinamicamente. Se não, usa o chumbado.
+    coords_reais = custom_coords if custom_coords else COORDENADAS
+    
+    if custom_chapa:
+        largura, altura = custom_chapa
+        pos_base_reais = [
+            (8.5, 8.5),
+            (largura - 8.5, 8.5),
+            (8.5, altura - 8.5),
+            (largura - 8.5, altura - 8.5)
+        ]
+    else:
+        pos_base_reais = POSICOES_BASE
+        
+    for x, y in pos_base_reais:
         adicionar_marca(msp, x, y)
+        
     first = next((it for it in lista_arquivos if it.posicao == 1), None)
     if first:
         path = baixar_arquivo_drive(first.nome, subpasta='arquivos padronizados')
         eb = ezdxf.readfile(path).modelspace()
         cx, cy = calcular_centro(eb)
-        dx, dy = COORDENADAS[1][0] - cx, COORDENADAS[1][1] - cy
+        # Usa coords_reais garantindo compatibilidade com o formato universal
+        dx, dy = coords_reais[1][0] - cx, coords_reais[1][1] - cy
         for ent in eb:
             try:
                 ne = ent.copy()
@@ -164,10 +187,12 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
                 msp.add_entity(ne)
             except:
                 pass
+                
     grupos = defaultdict(list)
     for it in lista_arquivos:
         if it.posicao != 1:
             grupos[it.nome].append(it.posicao)
+            
     for nome, poses in grupos.items():
         path = baixar_arquivo_drive(nome, subpasta='arquivos padronizados')
         eb = ezdxf.readfile(path).modelspace()
@@ -181,7 +206,10 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida):
             except:
                 pass
         for pos in poses:
-            msp.add_blockref(blk.name, insert=COORDENADAS[pos])
+            msp.add_blockref(blk.name, insert=coords_reais[pos])
+            
     os.makedirs(os.path.dirname(caminho_saida) or '.', exist_ok=True)
     doc.saveas(caminho_saida)
-    gerar_imagem_plano(caminho_saida, lista_arquivos)
+    
+    # Repassa as variáveis para que a imagem seja gerada nas mesmas proporções
+    gerar_imagem_plano(caminho_saida, lista_arquivos, custom_coords, custom_chapa)

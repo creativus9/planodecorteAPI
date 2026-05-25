@@ -37,11 +37,15 @@ class Entrada(BaseModel):
     Define o modelo de dados para a entrada da requisição POST.
     - arquivos: Lista de nomes de arquivos DXF a serem compostos.
     - nome_arquivo: Nome base para o arquivo DXF de saída (opcional, será gerado se não fornecido).
-    - maquina: Tipo de máquina ("18", "32" ou "32-2").
+    - maquina: Tipo de máquina ("18", "32" ou "32-2"). Continua funcional por padrão.
+    - coordenadas_customizadas: Dicionário mapeando a posição (1, 2, 3...) para [X, Y].
+    - tamanho_chapa: Lista com a largura e altura da chapa [L, A].
     """
     arquivos: list[str]
     nome_arquivo: str = None
     maquina: str = "18"
+    coordenadas_customizadas: dict[int, list[float]] = None
+    tamanho_chapa: list[float] = None
 
 @app.post("/compor")
 def compor(entrada: Entrada):
@@ -75,17 +79,33 @@ def compor(entrada: Entrada):
     existentes = listar_arquivos_existentes()
     nome_base = entrada.nome_arquivo  # O nome base para o arquivo de saída, ex: Plano de corte 13 16-06-2025.dxf
 
-    # Define o número máximo de arquivos por plano e a função de composição baseada na máquina.
-    if entrada.maquina == "32":
-        max_por_plano = 32
-        compor_fn = compor_dxf_com_base_32
-    elif entrada.maquina == "32-2":
-        max_por_plano = 32
-        compor_fn = compor_dxf_com_base_32_2
+    # Verifica se a requisição possui os dados customizados para acionar o motor universal
+    is_custom = entrada.coordenadas_customizadas is not None and entrada.tamanho_chapa is not None
+
+    if is_custom:
+        # Modo Universal Dinâmico:
+        max_por_plano = len(entrada.coordenadas_customizadas)
+        
+        # Criamos um "wrapper" para injetar as variáveis mantendo a mesma estrutura de chamada abaixo
+        def compor_fn(objs, path_saida):
+            compor_dxf_com_base_18(
+                objs, 
+                path_saida, 
+                custom_coords=entrada.coordenadas_customizadas, 
+                custom_chapa=entrada.tamanho_chapa
+            )
     else:
-        # Padrão ou máquina 18
-        max_por_plano = 18
-        compor_fn = compor_dxf_com_base_18
+        # Modo Estático / Retrocompatibilidade (Exatamente como funcionava antes):
+        if entrada.maquina == "32":
+            max_por_plano = 32
+            compor_fn = compor_dxf_com_base_32
+        elif entrada.maquina == "32-2":
+            max_por_plano = 32
+            compor_fn = compor_dxf_com_base_32_2
+        else:
+            # Padrão ou máquina 18
+            max_por_plano = 18
+            compor_fn = compor_dxf_com_base_18
 
     planos = [] # Lista para armazenar os detalhes dos planos gerados
     # Calcula o número de planos necessários
@@ -119,8 +139,6 @@ def compor(entrada: Entrada):
         path_saida = f"/tmp/{nome_saida_livre}"
         
         # Chama a função de composição DXF para gerar o arquivo.
-        # Assume-se que `compor_fn` também chama `gerar_imagem_plano` internamente,
-        # que por sua vez já faz o upload do PNG para o Google Drive.
         compor_fn(chunk_objs, path_saida)
 
         # Upload do arquivo DXF gerado para o Google Drive.
@@ -130,15 +148,9 @@ def compor(entrada: Entrada):
         nome_png = nome_saida_livre.replace('.dxf', '.png')
         
         # --- Lógica para o URL do PNG ---
-        # ATENÇÃO: A forma mais robusta seria ter a função `compor_fn` (ou `gerar_imagem_plano`
-        # dentro dela) retornando o URL real do PNG após o upload.
-        # Por enquanto, estamos simulando o URL do PNG com base no URL do DXF.
-        # Você precisará ajustar suas funções `compose_dxf.py` e `compose_dxf_32.py`
-        # para que `gerar_imagem_plano` retorne o URL do PNG e este seja propagado até aqui.
         url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '') # Simulação: remove '/view' para um URL mais "direto"
 
         # Adiciona os detalhes do plano (nome, URL do DXF e URL simulado do PNG) à lista de planos.
-        # O Apps Script espera a chave 'url', então estamos usando 'url_dxf' para isso.
         planos.append({"nome": nome_saida_livre, "url": url_dxf, "url_png": url_png_simulado})
 
     # Retorna a lista de planos gerados como resposta da API.
