@@ -51,14 +51,19 @@ class Entrada(BaseModel):
 def compor(entrada: Entrada):
     """
     Endpoint principal para compor arquivos DXF.
-    Recebe uma lista de nomes de arquivos e os compõe em um ou mais planos DXF,
-    baseado no tipo de máquina selecionado.
+    Recebe uma lista de nomes de arquivos, ordena-os alfabeticamente, e os
+    compõe em um ou mais planos DXF baseado no tipo de máquina selecionado.
     Também gera e faz upload de imagens PNG correspondentes.
     """
     total = len(entrada.arquivos)
     if total == 0:
         # Retorna um erro HTTP 400 se nenhum arquivo for fornecido
         raise HTTPException(status_code=400, detail="Nenhum arquivo fornecido.")
+
+    # --- ORDENAÇÃO ALFABÉTICA INTELIGENTE DOS ARQUIVOS ---
+    # Ordenamos a lista de arquivos de forma alfabética e insensível a maiúsculas/minúsculas (case-insensitive).
+    # Com isso, um arquivo "aaa-111.dxf" sempre ficará antes de "BBB-222.dxf" e assumirá uma posição menor.
+    entrada.arquivos.sort(key=lambda x: x.lower())
 
     # --- VALIDAÇÃO DE EXISTÊNCIA DOS ARQUIVOS NO GOOGLE DRIVE ---
     # Verifica se todos os arquivos DXF listados na entrada existem na subpasta
