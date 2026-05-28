@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 try:
     from ezdxf.addons.drawing import RenderContext, Frontend
     from ezdxf.addons.drawing.svg import SVGBackend
+    from ezdxf.addons.drawing.layout import Page # NOVO: Importação do objeto Page
     CAN_DRAW_SVG = True
 except ImportError:
     CAN_DRAW_SVG = False
@@ -145,15 +146,15 @@ def gerar_svg_base64(doc_dxf) -> str:
         msp = doc_dxf.modelspace()
         ctx = RenderContext(doc_dxf)
         
-        # Correção: O SVGBackend nas versões recentes do ezdxf 
-        # não recebe mais argumentos na inicialização.
         backend = SVGBackend()
         
         # Desenha o modelo no backend
         Frontend(ctx, backend).draw_layout(msp)
         
-        # Extrai a string SVG final gerada
-        svg_string = backend.get_string()
+        # Correção: Passamos um objeto Page com 0, 0 para que a biblioteca
+        # calcule automaticamente o enquadramento em torno da nossa placa
+        page = Page(0, 0)
+        svg_string = backend.get_string(page)
         
         return base64.b64encode(svg_string.encode('utf-8')).decode('utf-8')
     except Exception as e:
