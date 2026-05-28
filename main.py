@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware 
 
@@ -8,7 +8,7 @@ from compose_dxf_32 import compor_dxf_com_base_32
 from compose_dxf_32_2 import compor_dxf_com_base_32_2
 
 # Importações para a rota de Placas Personalizadas
-from detects_plaque import processar_ids_placas, limpar_dxf_placas, mapear_cor, preparar_placas_pedido
+from detects_plaque import processar_ids_placas, limpar_dxf_placas, mapear_cor, preparar_placas_pedido, extrair_placas_de_arquivo_local
 
 from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos, buscar_dxf_personalizado
 
@@ -125,22 +125,25 @@ def mover_antigos():
 
 @app.post("/analisar_placas")
 def analisar_placas(entrada: AnalisePlacasEntrada):
-    """
-    Novo endpoint: Recebe os IDs, recorta as placas dos DXFs originais 
-    e devolve os arquivos isolados no /tmp/ e as imagens SVG para o React mostrar.
-    """
     if not entrada.ids:
         raise HTTPException(status_code=400, detail="Nenhum ID fornecido para análise.")
     
     resultados = preparar_placas_pedido(entrada.ids)
     return {"resultados": resultados}
 
+@app.post("/upload_analisar_placa")
+async def upload_analisar_placa(file: UploadFile = File(...), target_id: str = Form(...)):
+    """ Endpoint para upload manual de DXF caso não ache no Drive. """
+    caminho_temp = f"/tmp/{target_id}_uploaded.dxf"
+    
+    with open(caminho_temp, "wb") as buffer:
+        buffer.write(await file.read())
+        
+    resultado = extrair_placas_de_arquivo_local(caminho_temp, target_id)
+    return resultado
+
 @app.post("/engraved_plaque")
 def engraved_plaque(entrada: EntradaPlacas):
-    """
-    Endpoint Híbrido Modificado: Agora ele prioriza usar os 'arquivos_especificos'
-    já escolhidos e limpos pelo usuário no Wizard do React.
-    """
     if entrada.ids and not entrada.placas:
         resultados = processar_ids_placas(entrada.ids)
         return {"resultados": resultados}
@@ -154,25 +157,20 @@ def engraved_plaque(entrada: EntradaPlacas):
     lista_arquivos_composicao = []
     resultados_log = []
 
-    # 1. Isolamento, Escolha e Multiplicação das Placas
     for placa in entrada.placas:
-        
         # Se o Frontend já nos enviou os DXFs exatos e limpos do /tmp/ (Pós Análise)
         if placa.arquivos_especificos and len(placa.arquivos_especificos) > 0:
             qtd_selecionada = len(placa.arquivos_especificos)
-            # Clona as placas que o usuário selecionou até atingir a quantidade exigida
             insercoes_necessarias = math.ceil(placa.quantidade / qtd_selecionada)
             
             for _ in range(insercoes_necessarias):
                 for caminho_tmp in placa.arquivos_especificos:
                     nome_base = os.path.basename(caminho_tmp)
-                    # Adiciona apenas o nome base, pois a função compor_dxf já procura na pasta /tmp/
                     lista_arquivos_composicao.append(nome_base)
             
             resultados_log.append({"id": placa.id, "status": "sucesso", "placas_usadas": qtd_selecionada})
-            
         else:
-            # Fallback Original (Caso venha do jeito antigo sem passar pela tela de seleção visual)
+            # Fallback Original
             caminho_local, nome_original = buscar_dxf_personalizado(placa.id)
             if not caminho_local:
                 resultados_log.append({"id": placa.id, "status": "nao_encontrado"})
@@ -193,7 +191,6 @@ def engraved_plaque(entrada: EntradaPlacas):
     if not lista_arquivos_composicao:
         raise HTTPException(status_code=400, detail="Nenhuma placa válida encontrada para compor.")
 
-    # 2. Composição Híbrida
     total = len(lista_arquivos_composicao)
     max_por_plano = len(entrada.coordenadas_customizadas)
     num_planos = (total + max_por_plano - 1) // max_por_plano
