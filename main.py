@@ -8,14 +8,14 @@ from compose_dxf_32 import compor_dxf_com_base_32
 from compose_dxf_32_2 import compor_dxf_com_base_32_2
 
 # Importações para a rota de Placas Personalizadas
-from detects_plaque import processar_ids_placas, limpar_dxf_placas, mapear_cor
+from detects_plaque import processar_ids_placas, limpar_dxf_placas, mapear_cor, preparar_placas_pedido
 
 from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos, buscar_dxf_personalizado
 
 from datetime import datetime
 from types import SimpleNamespace
 import os
-import math # Importação necessária para a nova lógica de divisão de placas
+import math
 
 app = FastAPI()
 
@@ -41,6 +41,7 @@ class PlacaConfig(BaseModel):
     id: str
     quantidade: int = 1
     cor: str = ""
+    arquivos_especificos: list[str] = None # NOVO: Para receber os caminhos temporários exatos escolhidos no Frontend
 
 class EntradaPlacas(BaseModel):
     ids: list[str] = None 
@@ -49,39 +50,34 @@ class EntradaPlacas(BaseModel):
     coordenadas_customizadas: dict[int, list[float]] = None
     nome_arquivo: str = None
 
+class AnalisePlacasEntrada(BaseModel):
+    ids: list[str]
+
+# ==========================================
+# ROTAS ANTIGAS MANTIDAS
+# ==========================================
 @app.post("/compor")
 def compor(entrada: Entrada):
-    """ Endpoint principal para compor arquivos DXF. """
     total = len(entrada.arquivos)
     if total == 0:
         raise HTTPException(status_code=400, detail="Nenhum arquivo fornecido.")
 
     entrada.arquivos.sort(key=lambda x: x.lower())
-
     arquivos_faltando = []
     for nome in entrada.arquivos:
         if not arquivo_existe_drive(nome, subpasta="arquivos padronizados"):
             arquivos_faltando.append(nome)
     if arquivos_faltando:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Os arquivos DXF abaixo NÃO foram encontrados no Google Drive:\n" + "\n".join(arquivos_faltando)
-        )
+        raise HTTPException(status_code=404, detail=f"Arquivos não encontrados no Google Drive:\n" + "\n".join(arquivos_faltando))
 
     existentes = listar_arquivos_existentes()
     nome_base = entrada.nome_arquivo
-
     is_custom = entrada.coordenadas_customizadas is not None and entrada.tamanho_chapa is not None
 
     if is_custom:
         max_por_plano = len(entrada.coordenadas_customizadas)
         def compor_fn(objs, path_saida):
-            compor_dxf_com_base_18(
-                objs, 
-                path_saida, 
-                custom_coords=entrada.coordenadas_customizadas, 
-                custom_chapa=entrada.tamanho_chapa
-            )
+            compor_dxf_com_base_18(objs, path_saida, custom_coords=entrada.coordenadas_customizadas, custom_chapa=entrada.tamanho_chapa)
     else:
         if entrada.maquina == "32":
             max_por_plano = 32
@@ -98,16 +94,9 @@ def compor(entrada: Entrada):
 
     for i in range(num_planos):
         chunk_names = entrada.arquivos[i*max_por_plano : (i+1)*max_por_plano]
-        chunk_objs = [
-            SimpleNamespace(nome=name, posicao=index + 1)
-            for index, name in enumerate(chunk_names)
-        ]
+        chunk_objs = [SimpleNamespace(nome=name, posicao=index + 1) for index, name in enumerate(chunk_names)]
 
-        if i == 0:
-            nome_saida = nome_base
-        else:
-            nome_saida = nome_base.replace('.dxf', f'_{i+1:02d}.dxf')
-
+        nome_saida = nome_base if i == 0 else nome_base.replace('.dxf', f'_{i+1:02d}.dxf')
         nome_saida_livre = nome_saida
         contador_extra = 2
         while nome_saida_livre in existentes:
@@ -116,22 +105,41 @@ def compor(entrada: Entrada):
 
         path_saida = f"/tmp/{nome_saida_livre}"
         compor_fn(chunk_objs, path_saida)
-
         url_dxf = upload_to_drive(path_saida, nome_saida_livre)
-        nome_png = nome_saida_livre.replace('.dxf', '.png')
         url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '')
-
         planos.append({"nome": nome_saida_livre, "url": url_dxf, "url_png": url_png_simulado})
 
     return {"plans": planos}
 
+@app.post("/mover-antigos")
+def mover_antigos():
+    try:
+        moved_count = mover_arquivos_antigos()
+        return {"moved": moved_count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao mover arquivos: {e}")
+
+# ==========================================
+# NOVAS ROTAS - INTELIGÊNCIA DE PLACAS
+# ==========================================
+
+@app.post("/analisar_placas")
+def analisar_placas(entrada: AnalisePlacasEntrada):
+    """
+    Novo endpoint: Recebe os IDs, recorta as placas dos DXFs originais 
+    e devolve os arquivos isolados no /tmp/ e as imagens SVG para o React mostrar.
+    """
+    if not entrada.ids:
+        raise HTTPException(status_code=400, detail="Nenhum ID fornecido para análise.")
+    
+    resultados = preparar_placas_pedido(entrada.ids)
+    return {"resultados": resultados}
 
 @app.post("/engraved_plaque")
 def engraved_plaque(entrada: EntradaPlacas):
     """
-    Novo Endpoint Híbrido:
-    - Se enviar apenas 'ids', ele só conta as placas.
-    - Se enviar 'placas', ele extrai, espelha, injeta sobreposição e calcula as cópias exatas!
+    Endpoint Híbrido Modificado: Agora ele prioriza usar os 'arquivos_especificos'
+    já escolhidos e limpos pelo usuário no Wizard do React.
     """
     if entrada.ids and not entrada.placas:
         resultados = processar_ids_placas(entrada.ids)
@@ -146,30 +154,41 @@ def engraved_plaque(entrada: EntradaPlacas):
     lista_arquivos_composicao = []
     resultados_log = []
 
-    # 1. Isolamento, Limpeza e Espelhamento das Placas
+    # 1. Isolamento, Escolha e Multiplicação das Placas
     for placa in entrada.placas:
-        caminho_local, nome_original = buscar_dxf_personalizado(placa.id)
         
-        if not caminho_local:
-            resultados_log.append({"id": placa.id, "status": "nao_encontrado"})
-            continue
-            
-        sufixo_cor = mapear_cor(placa.cor)
-        nome_limpo = f"{placa.id}_limpo-{sufixo_cor}.dxf"
-        caminho_limpo = f"/tmp/{nome_limpo}"
-        
-        # Limpa o arquivo, espelha e coloca a sobreposição
-        qtd_encontrada = limpar_dxf_placas(caminho_local, caminho_limpo)
-        resultados_log.append({"id": placa.id, "placas_internas_encontradas": qtd_encontrada, "cor_injetada": sufixo_cor})
-        
-        if qtd_encontrada > 0:
-            # LÓGICA MATEMÁTICA INTELIGENTE:
-            # Divide o total pedido pela quantidade de placas que já existem dentro do arquivo.
-            # O math.ceil arredonda pra cima. Ex: pediu 3, tem 2 -> 3/2 = 1.5 -> insere 2 vezes.
-            insercoes_necessarias = math.ceil(placa.quantidade / qtd_encontrada)
+        # Se o Frontend já nos enviou os DXFs exatos e limpos do /tmp/ (Pós Análise)
+        if placa.arquivos_especificos and len(placa.arquivos_especificos) > 0:
+            qtd_selecionada = len(placa.arquivos_especificos)
+            # Clona as placas que o usuário selecionou até atingir a quantidade exigida
+            insercoes_necessarias = math.ceil(placa.quantidade / qtd_selecionada)
             
             for _ in range(insercoes_necessarias):
-                lista_arquivos_composicao.append(nome_limpo)
+                for caminho_tmp in placa.arquivos_especificos:
+                    nome_base = os.path.basename(caminho_tmp)
+                    # Adiciona apenas o nome base, pois a função compor_dxf já procura na pasta /tmp/
+                    lista_arquivos_composicao.append(nome_base)
+            
+            resultados_log.append({"id": placa.id, "status": "sucesso", "placas_usadas": qtd_selecionada})
+            
+        else:
+            # Fallback Original (Caso venha do jeito antigo sem passar pela tela de seleção visual)
+            caminho_local, nome_original = buscar_dxf_personalizado(placa.id)
+            if not caminho_local:
+                resultados_log.append({"id": placa.id, "status": "nao_encontrado"})
+                continue
+                
+            sufixo_cor = mapear_cor(placa.cor)
+            nome_limpo = f"{placa.id}_limpo-{sufixo_cor}.dxf"
+            caminho_limpo = f"/tmp/{nome_limpo}"
+            
+            qtd_encontrada = limpar_dxf_placas(caminho_local, caminho_limpo)
+            resultados_log.append({"id": placa.id, "placas_internas_encontradas": qtd_encontrada, "cor_injetada": sufixo_cor})
+            
+            if qtd_encontrada > 0:
+                insercoes_necessarias = math.ceil(placa.quantidade / qtd_encontrada)
+                for _ in range(insercoes_necessarias):
+                    lista_arquivos_composicao.append(nome_limpo)
 
     if not lista_arquivos_composicao:
         raise HTTPException(status_code=400, detail="Nenhuma placa válida encontrada para compor.")
@@ -185,16 +204,9 @@ def engraved_plaque(entrada: EntradaPlacas):
 
     for i in range(num_planos):
         chunk_names = lista_arquivos_composicao[i*max_por_plano : (i+1)*max_por_plano]
-        chunk_objs = [
-            SimpleNamespace(nome=name, posicao=index + 1)
-            for index, name in enumerate(chunk_names)
-        ]
+        chunk_objs = [SimpleNamespace(nome=name, posicao=index + 1) for index, name in enumerate(chunk_names)]
 
-        if i == 0:
-            nome_saida = nome_base
-        else:
-            nome_saida = nome_base.replace('.dxf', f'_{i+1:02d}.dxf')
-
+        nome_saida = nome_base if i == 0 else nome_base.replace('.dxf', f'_{i+1:02d}.dxf')
         nome_saida_livre = nome_saida
         contador_extra = 2
         while nome_saida_livre in existentes:
@@ -202,32 +214,10 @@ def engraved_plaque(entrada: EntradaPlacas):
             contador_extra += 1
 
         path_saida = f"/tmp/{nome_saida_livre}"
-        
-        # Usa sempre o motor universal (com base 18) para customizados
-        compor_dxf_com_base_18(
-            chunk_objs, 
-            path_saida, 
-            custom_coords=entrada.coordenadas_customizadas, 
-            custom_chapa=entrada.tamanho_chapa
-        )
+        compor_dxf_com_base_18(chunk_objs, path_saida, custom_coords=entrada.coordenadas_customizadas, custom_chapa=entrada.tamanho_chapa)
 
         url_dxf = upload_to_drive(path_saida, nome_saida_livre)
         url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '')
-
         planos.append({"nome": nome_saida_livre, "url": url_dxf, "url_png": url_png_simulado})
 
-    return {
-        "logs_deteccao": resultados_log,
-        "plans": planos
-    }
-
-
-@app.post("/mover-antigos")
-def mover_antigos():
-    """ Endpoint para mover arquivos DXF antigos. """
-    try:
-        moved_count = mover_arquivos_antigos()
-        return {"moved": moved_count}
-    except Exception as e:
-        print(f"Erro ao mover arquivos: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro ao mover arquivos: {e}")
+    return {"logs_deteccao": resultados_log, "plans": planos}
