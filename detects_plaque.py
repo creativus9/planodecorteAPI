@@ -4,7 +4,6 @@ from ezdxf.math import Matrix44
 import logging
 import unicodedata
 import os
-import io
 import base64
 
 # Configuração simples de log
@@ -116,11 +115,9 @@ def limpar_dxf_placas(caminho_entrada: str, caminho_saida: str) -> int:
                     for (nx, ny) in novos_centros:
                         dx, dy = nx - bb_sob.center.x, ny - bb_sob.center.y
                         for ent in msp_sobrepor:
-                            try:
-                                novo_ent = ent.copy()
-                                novo_ent.translate(dx, dy, 0)
-                                msp.add_entity(novo_ent)
-                            except Exception: pass
+                            novo_ent = ent.copy()
+                            novo_ent.translate(dx, dy, 0)
+                            msp.add_entity(novo_ent)
             except Exception: pass
     doc.saveas(caminho_saida)
     return qtd_placas
@@ -147,11 +144,17 @@ def gerar_svg_base64(doc_dxf) -> str:
     try:
         msp = doc_dxf.modelspace()
         ctx = RenderContext(doc_dxf)
-        # Configurações para um fundo branco e traços limpos
-        out = io.StringIO()
-        backend = SVGBackend(out)
+        
+        # Correção: O SVGBackend nas versões recentes do ezdxf 
+        # não recebe mais argumentos na inicialização.
+        backend = SVGBackend()
+        
+        # Desenha o modelo no backend
         Frontend(ctx, backend).draw_layout(msp)
-        svg_string = out.getvalue()
+        
+        # Extrai a string SVG final gerada
+        svg_string = backend.get_string()
+        
         return base64.b64encode(svg_string.encode('utf-8')).decode('utf-8')
     except Exception as e:
         logger.error(f"Erro ao gerar SVG Base64: {e}")
@@ -257,7 +260,6 @@ def preparar_placas_pedido(ids: list) -> list:
                 except Exception: pass
 
             # MOVE TUDO PARA A ORIGEM (0,0) ANTES DE GERAR A IMAGEM E SALVAR
-            # Isso garante que a imagem fique bem enquadrada e não com um "mundo vazio" em volta
             m_to_origin = Matrix44.translate(-nx, -ny, 0)
             for ent in msp_temp:
                 try: ent.transform(m_to_origin)
