@@ -1,14 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware # Importado para permitir requisições de diferentes origens
+from fastapi.middleware.cors import CORSMiddleware
 
 # Importações das funções de composição DXF e de interação com o Google Drive
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
 from compose_dxf_32 import compor_dxf_com_base_32
-# Importa a nova função para a máquina 32-2
 from compose_dxf_32_2 import compor_dxf_com_base_32_2
 
-# Agora importamos 'mover_arquivos_antigos' corretamente
+# Importações para a rota de Placas Personalizadas
+from detects_plaque import processar_ids_placas
+
 from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos
 
 from datetime import datetime
@@ -18,80 +19,52 @@ import os
 app = FastAPI()
 
 # --- Configuração CORS ---
-# Esta seção permite que o seu frontend (por exemplo, uma aplicação React)
-# faça requisições para esta API, mesmo que estejam em domínios/portas diferentes.
 origins = ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,          # Lista de origens permitidas
-    allow_credentials=True,         # Permite o envio de cookies de credenciais
-    allow_methods=["*"],            # Permite todos os métodos HTTP (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],            # Permite todos os cabeçalhos nas requisições
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-# --- Fim da Configuração CORS ---
 
 
 class Entrada(BaseModel):
-    """
-    Define o modelo de dados para a entrada da requisição POST.
-    - arquivos: Lista de nomes de arquivos DXF a serem compostos.
-    - nome_arquivo: Nome base para o arquivo DXF de saída (opcional, será gerado se não fornecido).
-    - maquina: Tipo de máquina ("18", "32" ou "32-2"). Continua funcional por padrão.
-    - coordenadas_customizadas: Dicionário mapeando a posição (1, 2, 3...) para [X, Y].
-    - tamanho_chapa: Lista com a largura e altura da chapa [L, A].
-    """
     arquivos: list[str]
     nome_arquivo: str = None
     maquina: str = "18"
     coordenadas_customizadas: dict[int, list[float]] = None
     tamanho_chapa: list[float] = None
 
+class EntradaPlacas(BaseModel):
+    ids: list[str]
+
 @app.post("/compor")
 def compor(entrada: Entrada):
-    """
-    Endpoint principal para compor arquivos DXF.
-    Recebe uma lista de nomes de arquivos, ordena-os alfabeticamente, e os
-    compõe em um ou mais planos DXF baseado no tipo de máquina selecionado.
-    Também gera e faz upload de imagens PNG correspondentes.
-    """
+    """ Endpoint principal para compor arquivos DXF. """
     total = len(entrada.arquivos)
     if total == 0:
-        # Retorna um erro HTTP 400 se nenhum arquivo for fornecido
         raise HTTPException(status_code=400, detail="Nenhum arquivo fornecido.")
 
-    # --- ORDENAÇÃO ALFABÉTICA INTELIGENTE DOS ARQUIVOS ---
-    # Ordenamos a lista de arquivos de forma alfabética e insensível a maiúsculas/minúsculas (case-insensitive).
-    # Com isso, um arquivo "aaa-111.dxf" sempre ficará antes de "BBB-222.dxf" e assumirá uma posição menor.
     entrada.arquivos.sort(key=lambda x: x.lower())
 
-    # --- VALIDAÇÃO DE EXISTÊNCIA DOS ARQUIVOS NO GOOGLE DRIVE ---
-    # Verifica se todos os arquivos DXF listados na entrada existem na subpasta
-    # "arquivos padronizados" do Google Drive.
     arquivos_faltando = []
     for nome in entrada.arquivos:
         if not arquivo_existe_drive(nome, subpasta="arquivos padronizados"):
             arquivos_faltando.append(nome)
     if arquivos_faltando:
-        # Se houver arquivos faltando, retorna um erro HTTP 404 com a lista de arquivos não encontrados.
         raise HTTPException(
             status_code=404,
             detail=f"Os arquivos DXF abaixo NÃO foram encontrados no Google Drive:\n" + "\n".join(arquivos_faltando)
         )
-    # --- FIM DA VALIDAÇÃO ---
 
-    # Lista os arquivos já existentes no Google Drive para evitar sobrescrever nomes.
     existentes = listar_arquivos_existentes()
-    nome_base = entrada.nome_arquivo  # O nome base para o arquivo de saída, ex: Plano de corte 13 16-06-2025.dxf
+    nome_base = entrada.nome_arquivo
 
-    # Verifica se a requisição possui os dados customizados para acionar o motor universal
     is_custom = entrada.coordenadas_customizadas is not None and entrada.tamanho_chapa is not None
 
     if is_custom:
-        # Modo Universal Dinâmico:
         max_por_plano = len(entrada.coordenadas_customizadas)
-        
-        # Criamos um "wrapper" para injetar as variáveis mantendo a mesma estrutura de chamada abaixo
         def compor_fn(objs, path_saida):
             compor_dxf_com_base_18(
                 objs, 
@@ -100,7 +73,6 @@ def compor(entrada: Entrada):
                 custom_chapa=entrada.tamanho_chapa
             )
     else:
-        # Modo Estático / Retrocompatibilidade (Exatamente como funcionava antes):
         if entrada.maquina == "32":
             max_por_plano = 32
             compor_fn = compor_dxf_com_base_32
@@ -108,67 +80,60 @@ def compor(entrada: Entrada):
             max_por_plano = 32
             compor_fn = compor_dxf_com_base_32_2
         else:
-            # Padrão ou máquina 18
             max_por_plano = 18
             compor_fn = compor_dxf_com_base_18
 
-    planos = [] # Lista para armazenar os detalhes dos planos gerados
-    # Calcula o número de planos necessários
+    planos = []
     num_planos = (total + max_por_plano - 1) // max_por_plano
 
     for i in range(num_planos):
-        # Seleciona o "pedaço" de arquivos para o plano atual
         chunk_names = entrada.arquivos[i*max_por_plano : (i+1)*max_por_plano]
-        # Converte os nomes dos arquivos em objetos SimpleNamespace para a função de composição
         chunk_objs = [
             SimpleNamespace(nome=name, posicao=index + 1)
             for index, name in enumerate(chunk_names)
         ]
 
-        # Define o nome de saída para o plano atual
         if i == 0:
             nome_saida = nome_base
         else:
-            # Adiciona um sufixo numérico (ex: _02, _03) antes da extensão .dxf para planos subsequentes.
             nome_saida = nome_base.replace('.dxf', f'_{i+1:02d}.dxf')
 
-        # Evita sobrescrever arquivos existentes no Google Drive, adicionando sufixos extras se necessário.
         nome_saida_livre = nome_saida
         contador_extra = 2
         while nome_saida_livre in existentes:
-            # Tenta um novo nome com sufixo incremental se o nome já existir
             nome_saida_livre = nome_base.replace('.dxf', f'_{i+contador_extra:02d}.dxf')
             contador_extra += 1
 
-        # Define o caminho temporário para salvar o arquivo DXF gerado localmente.
         path_saida = f"/tmp/{nome_saida_livre}"
-        
-        # Chama a função de composição DXF para gerar o arquivo.
         compor_fn(chunk_objs, path_saida)
 
-        # Upload do arquivo DXF gerado para o Google Drive.
         url_dxf = upload_to_drive(path_saida, nome_saida_livre)
-        
-        # O nome do PNG será o mesmo do DXF, mas com extensão .png.
         nome_png = nome_saida_livre.replace('.dxf', '.png')
-        
-        # --- Lógica para o URL do PNG ---
-        url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '') # Simulação: remove '/view' para um URL mais "direto"
+        url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '')
 
-        # Adiciona os detalhes do plano (nome, URL do DXF e URL simulado do PNG) à lista de planos.
         planos.append({"nome": nome_saida_livre, "url": url_dxf, "url_png": url_png_simulado})
 
-    # Retorna a lista de planos gerados como resposta da API.
     return {"plans": planos}
+
+
+@app.post("/engraved_plaque")
+def engraved_plaque(entrada: EntradaPlacas):
+    """
+    Recebe uma lista de IDs, busca o DXF correspondente no Google Drive (com base em Regex),
+    e conta quantas placas amarelas existem usando o novo motor em detects_plaque.py.
+    """
+    if not entrada.ids:
+        raise HTTPException(status_code=400, detail="A lista de IDs não pode estar vazia.")
+    
+    resultados = processar_ids_placas(entrada.ids)
+    return {"resultados": resultados}
+
 
 @app.post("/mover-antigos")
 def mover_antigos():
-    """
-    Endpoint para mover arquivos DXF antigos para uma subpasta de "arquivos antigos".
-    Esta função agora chama a lógica implementada em google_drive.py.
-    """
+    """ Endpoint para mover arquivos DXF antigos. """
     try:
-        moved_count = mover_arquivos_antigos() # Chama a função do google_drive.py
+        moved_count = mover_arquivos_antigos()
         return {"moved": moved_count}
     except Exception as e:
         print(f"Erro ao mover arquivos: {e}")

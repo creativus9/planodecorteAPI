@@ -1,6 +1,7 @@
 import os
 import json
 import datetime
+import re # IMPORTANTE: Adicionado para validação do nome do arquivo
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -18,6 +19,7 @@ creds = service_account.Credentials.from_service_account_info(
 
 drive_service = build('drive', 'v3', credentials=creds)
 FOLDER_ID = "18RIUiRS7SugpUeGOIAxu3gVj9D6-MD2G"
+FOLDER_ID_PLACAS = "1fLWrdK6MUhbeyBDvWHjz-2bTmZ2GB0ap" # Novo ID para a pasta das placas
 
 
 def baixar_arquivo_drive(nome_arquivo, subpasta=None):
@@ -109,3 +111,31 @@ def arquivo_existe_drive(nome_arquivo, subpasta="arquivos padronizados"):
         return False
     except Exception:
         return False
+
+
+# --- NOVA FUNÇÃO DE PLACAS ---
+def buscar_dxf_personalizado(target_id: str):
+    """
+    Busca o DXF na pasta específica de placas e garante a nomenclatura correta usando Regex.
+    """
+    # 1. Pré-filtro no Google Drive para ser super rápido
+    query = f"'{FOLDER_ID_PLACAS}' in parents and name contains '{target_id}' and trashed = false"
+    response = drive_service.files().list(q=query, fields="files(id,name)").execute()
+    arquivos = response.get('files', [])
+
+    # 2. Regex rigoroso: ID + (espaços) + hífen + (espaços) + 'Arquivo Personalizado' + (tudo liberado) + '.dxf'
+    # O re.IGNORECASE garante que não importa maiúsculas ou minúsculas
+    padrao = re.compile(rf"^{re.escape(target_id)}\s*-\s*arquivo personalizado.*\.dxf$", re.IGNORECASE)
+
+    for arq in arquivos:
+        if padrao.match(arq['name']):
+            # Encontrou o arquivo que bate 100% com as regras de nome! Fazemos o download.
+            file_id = arq['id']
+            local_path = f"/tmp/{arq['name']}"
+            data = drive_service.files().get_media(fileId=file_id).execute()
+            with open(local_path, 'wb') as f:
+                f.write(data)
+            return local_path, arq['name']
+    
+    # Se rodou tudo e não achou ou não bateu o Regex
+    return None, None
