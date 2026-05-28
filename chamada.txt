@@ -8,22 +8,21 @@ Header Obrigatório: Content-Type: application/json
 
 A API agora suporta dois modos de funcionamento: o Modo Padrão (Jeito Antigo), que utiliza os layouts pré-configurados (chumbados) das máquinas, e o Modo Universal (Jeito Novo), que permite total liberdade para definir o tamanho da chapa e a posição de cada peça.
 
-1. O Jeito Antigo (Modo Padrão / Máquinas Específicas)
+O Jeito Antigo (Modo Padrão / Máquinas Específicas)
 
 Este é o método original. Ele foi mantido intacto para garantir que nenhuma integração atual quebre (100% de retrocompatibilidade). Neste modo, a API decide o agrupamento e o tamanho da chapa com base no nome da máquina informada.
 
 Formato do JSON (Request)
 
 {
-  "arquivos": [
-    "peca1-DOU.dxf", 
-    "peca2-ROS.dxf", 
-    "peca3-PRA.dxf"
-  ],
-  "maquina": "32",
-  "nome_arquivo": "Plano de corte 13 16-06-2025.dxf"
+"arquivos": [
+"peca1-DOU.dxf",
+"peca2-ROS.dxf",
+"peca3-PRA.dxf"
+],
+"maquina": "32",
+"nome_arquivo": "Plano de corte 13 16-06-2025.dxf"
 }
-
 
 Parâmetros:
 
@@ -37,27 +36,26 @@ Comportamento:
 
 A API vai usar as coordenadas X e Y, o tamanho da chapa e o limite máximo de peças por plano gravados nos arquivos do sistema para a máquina escolhida.
 
-2. O Jeito Novo (Modo Universal / Dinâmico)
+O Jeito Novo (Modo Universal / Dinâmico)
 
 Neste modo, você ignora o parâmetro maquina e informa diretamente para a API qual é o tamanho da chapa que você deseja usar e onde exatamente cada peça deve ser inserida.
 
 Formato do JSON (Request)
 
 {
-  "arquivos": [
-    "peca1-DOU.dxf", 
-    "peca2-ROS.dxf", 
-    "peca3-PRA.dxf"
-  ],
-  "tamanho_chapa": [1500.0, 1000.0],
-  "coordenadas_customizadas": {
-    "1": [100.5, 200.0],
-    "2": [300.0, 200.0],
-    "3": [500.0, 200.0]
-  },
-  "nome_arquivo": "Plano Customizado.dxf"
+"arquivos": [
+"peca1-DOU.dxf",
+"peca2-ROS.dxf",
+"peca3-PRA.dxf"
+],
+"tamanho_chapa": [1500.0, 1000.0],
+"coordenadas_customizadas": {
+"1": [100.5, 200.0],
+"2": [300.0, 200.0],
+"3": [500.0, 200.0]
+},
+"nome_arquivo": "Plano Customizado.dxf"
 }
-
 
 Parâmetros:
 
@@ -75,7 +73,7 @@ Você não precisa informar onde ficam os pequenos quadrados de alinhamento dos 
 
 O limite de peças por plano (a hora de quebrar para o próximo arquivo _02.dxf) será definido automaticamente pela quantidade de chaves que você enviar no objeto coordenadas_customizadas.
 
-3. Resposta da API (Para ambos os modos)
+Resposta da API (Para ambos os modos)
 
 Independente de como você enviou a requisição, se a geração for bem sucedida, a API sempre retornará a mesma estrutura: uma lista dos planos gerados contendo os links públicos do Google Drive.
 
@@ -84,23 +82,77 @@ Formato do JSON (Response)
 Status HTTP: 200 OK
 
 {
-  "plans": [
-    {
-      "nome": "Plano de corte 13 16-06-2025.dxf",
-      "url": "[https://drive.google.com/file/d/1A2B3C4D5E/view](https://drive.google.com/file/d/1A2B3C4D5E/view)",
-      "url_png": "[https://drive.google.com/file/d/1A2B3C4D5E](https://drive.google.com/file/d/1A2B3C4D5E)"
-    },
-    {
-      "nome": "Plano de corte 13 16-06-2025_02.dxf",
-      "url": "[https://drive.google.com/file/d/9Z8Y7X6W5V/view](https://drive.google.com/file/d/9Z8Y7X6W5V/view)",
-      "url_png": "[https://drive.google.com/file/d/9Z8Y7X6W5V](https://drive.google.com/file/d/9Z8Y7X6W5V)"
-    }
-  ]
+"plans": [
+{
+"nome": "Plano de corte 13 16-06-2025.dxf",
+"url": "https://drive.google.com/file/d/1A2B3C4D5E/view",
+"url_png": "https://drive.google.com/file/d/1A2B3C4D5E"
+},
+{
+"nome": "Plano de corte 13 16-06-2025_02.dxf",
+"url": "https://drive.google.com/file/d/9Z8Y7X6W5V/view",
+"url_png": "https://drive.google.com/file/d/9Z8Y7X6W5V"
 }
-
+]
+}
 
 Tratamento de Erros:
 
 Status 400: Retornado caso o array "arquivos" seja enviado vazio.
 
 Status 404: Retornado caso algum dos arquivos DXF solicitados não seja encontrado no Google Drive. A resposta incluirá os nomes dos arquivos que falharam para facilitar a depuração.
+
+Documentação Adicional - Detecção de Placas Customizadas
+
+A API agora suporta a detecção inteligente de "Placas" dentro de arquivos DXF customizados.
+
+Endpoint: /engraved_plaque
+Método: POST
+Header Obrigatório: Content-Type: application/json
+
+Este endpoint recebe uma lista de IDs únicos, varre o Google Drive (Pasta ID: 1fLWrdK6MUhbeyBDvWHjz-2bTmZ2GB0ap) e contabiliza a quantidade de "Placas de Corte" contidas em cada arquivo identificado.
+
+Regras da Busca no Drive (Nomenclatura):
+O arquivo obrigatóriamente precisa:
+
+Começar com o ID exato.
+
+Seguido de um hífen (com ou sem espaços). Ex: "ID - Arquivo" ou "ID-Arquivo".
+
+Conter "Arquivo Personalizado" logo após.
+
+Qualquer texto extra depois, mas obrigatoriamente terminando em ".dxf".
+*A busca é Case-Insensitive (não difere maiúsculas e minúsculas).
+
+Regras da Contagem Interna do DXF:
+A API varre o arquivo buscando peças em formato retangular exato, fechadas, na cor Amarela (Código CAD: 62 = 2) e com o tamanho milimétrico fixo de 129mm x 187.8mm.
+
+Formato do JSON (Request)
+
+{
+"ids": [
+"250728ABRXRHX4",
+"OUTRO_ID_TESTE"
+]
+}
+
+Formato do JSON (Response)
+
+Status HTTP: 200 OK
+
+{
+"resultados": [
+{
+"id": "250728ABRXRHX4",
+"status": "sucesso",
+"quantidade": 2,
+"arquivo": "250728ABRXRHX4 - Arquivo Personalizado.dxf"
+},
+{
+"id": "OUTRO_ID_TESTE",
+"status": "nao_encontrado",
+"quantidade": 0,
+"arquivo": null
+}
+]
+}
