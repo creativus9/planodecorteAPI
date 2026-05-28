@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware # Importado para permitir requisições de diferentes origens
+from fastapi.middleware.cors import CORSMiddleware 
 
 # Importações das funções de composição DXF e de interação com o Google Drive
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
@@ -10,17 +10,18 @@ from compose_dxf_32_2 import compor_dxf_com_base_32_2
 # Importações para a rota de Placas Personalizadas
 from detects_plaque import processar_ids_placas, limpar_dxf_placas, mapear_cor
 
-# Agora importamos 'mover_arquivos_antigos' corretamente
 from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos, buscar_dxf_personalizado
 
 from datetime import datetime
 from types import SimpleNamespace
 import os
+import math # Importação necessária para a nova lógica de divisão de placas
 
 app = FastAPI()
 
 # --- Configuração CORS ---
 origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -28,7 +29,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 class Entrada(BaseModel):
     arquivos: list[str]
@@ -43,7 +43,7 @@ class PlacaConfig(BaseModel):
     cor: str = ""
 
 class EntradaPlacas(BaseModel):
-    ids: list[str] = None # Mantido para retrocompatibilidade
+    ids: list[str] = None 
     placas: list[PlacaConfig] = None
     tamanho_chapa: list[float] = None
     coordenadas_customizadas: dict[int, list[float]] = None
@@ -130,9 +130,8 @@ def compor(entrada: Entrada):
 def engraved_plaque(entrada: EntradaPlacas):
     """
     Novo Endpoint Híbrido:
-    - Se enviar apenas 'ids', ele só conta as placas (Modo antigo/simples).
-    - Se enviar 'placas', 'tamanho_chapa' e 'coordenadas_customizadas', ele extrai 
-      as placas limpas, injeta a cor e gera o plano de corte inteiro!
+    - Se enviar apenas 'ids', ele só conta as placas.
+    - Se enviar 'placas', ele extrai, espelha, injeta sobreposição e calcula as cópias exatas!
     """
     if entrada.ids and not entrada.placas:
         resultados = processar_ids_placas(entrada.ids)
@@ -141,14 +140,13 @@ def engraved_plaque(entrada: EntradaPlacas):
     if not entrada.placas:
         raise HTTPException(status_code=400, detail="A lista de placas não pode estar vazia.")
         
-    # Verifica se quer compor o plano de corte
     if not entrada.tamanho_chapa or not entrada.coordenadas_customizadas or not entrada.nome_arquivo:
         raise HTTPException(status_code=400, detail="Para gerar o plano, informe tamanho_chapa, coordenadas_customizadas e nome_arquivo.")
 
     lista_arquivos_composicao = []
     resultados_log = []
 
-    # 1. Isolamento e Limpeza das Placas
+    # 1. Isolamento, Limpeza e Espelhamento das Placas
     for placa in entrada.placas:
         caminho_local, nome_original = buscar_dxf_personalizado(placa.id)
         
@@ -160,19 +158,23 @@ def engraved_plaque(entrada: EntradaPlacas):
         nome_limpo = f"{placa.id}_limpo-{sufixo_cor}.dxf"
         caminho_limpo = f"/tmp/{nome_limpo}"
         
-        # Limpa o arquivo deixando SÓ a placa e o que está dentro dela
+        # Limpa o arquivo, espelha e coloca a sobreposição
         qtd_encontrada = limpar_dxf_placas(caminho_local, caminho_limpo)
         resultados_log.append({"id": placa.id, "placas_internas_encontradas": qtd_encontrada, "cor_injetada": sufixo_cor})
         
         if qtd_encontrada > 0:
-            # Clona o nome da peça limpa a quantidade de vezes solicitada
-            for _ in range(placa.quantidade):
+            # LÓGICA MATEMÁTICA INTELIGENTE:
+            # Divide o total pedido pela quantidade de placas que já existem dentro do arquivo.
+            # O math.ceil arredonda pra cima. Ex: pediu 3, tem 2 -> 3/2 = 1.5 -> insere 2 vezes.
+            insercoes_necessarias = math.ceil(placa.quantidade / qtd_encontrada)
+            
+            for _ in range(insercoes_necessarias):
                 lista_arquivos_composicao.append(nome_limpo)
 
     if not lista_arquivos_composicao:
         raise HTTPException(status_code=400, detail="Nenhuma placa válida encontrada para compor.")
 
-    # 2. Composição Hibrida (Aproveitando a Lógica do /compor)
+    # 2. Composição Híbrida
     total = len(lista_arquivos_composicao)
     max_por_plano = len(entrada.coordenadas_customizadas)
     num_planos = (total + max_por_plano - 1) // max_por_plano
