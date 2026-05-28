@@ -5,7 +5,6 @@ from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from ezdxf import units # Importe 'units' do ezdxf
 
-
 # Coordenadas das etiquetas (em mm)
 COORDENADAS = {
     1: (99.5, 113.9), 2: (253.0, 113.9), 3: (406.5, 113.9), 4: (560.0, 113.9),
@@ -14,6 +13,7 @@ COORDENADAS = {
     13: (99.5, 509.5), 14: (253.0, 509.5), 15: (406.5, 509.5), 16: (560.0, 509.5),
     17: (713.5, 509.5), 18: (867.0, 509.5),
 }
+
 POSICOES_BASE = [(8.5, 8.5), (961.5, 8.5), (8.5, 771.5), (961.5, 771.5)]
 COLOR_MAP = {'DOU': '#FFD700', 'ROS': '#B76E79', 'PRA': '#C0C0C0'}
 LETTER_MAP = {'DOU': 'D', 'ROS': 'R', 'PRA': 'P'}
@@ -27,7 +27,7 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos, custom_coords=None, custom_c
     """
     png_path = caminho_dxf.replace('.dxf', '.png')
     
-    # Define quais variáveis usar (as customizadas ou as padrões)
+    # Define quais vari veis usar (as customizadas ou as padr o)
     plano_lx = custom_chapa[0] if custom_chapa else PLANO_LX_MM
     plano_ly = custom_chapa[1] if custom_chapa else PLANO_LY_MM
     coords_reais = custom_coords if custom_coords else COORDENADAS
@@ -37,12 +37,11 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos, custom_coords=None, custom_c
     w_px = int(round(plano_lx * scale))
     h_px = int(round(plano_ly * scale))
     margin = 80
-
     img = Image.new('RGB', (w_px, h_px + margin), 'white')
     draw = ImageDraw.Draw(img)
 
-    # Tamanhos de fonte configuráveis
-    title_size = 48  # ajuste tamanho do título aqui
+    # Tamanhos de fonte configur veis
+    title_size = 48  # ajuste tamanho do t tulo aqui
     letter_size = 72  # ajuste tamanho das letras aqui
 
     # Tentativas de caminhos de fontes TrueType
@@ -62,32 +61,32 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos, custom_coords=None, custom_c
                 break
             except Exception:
                 continue
+
     if title_font is None:
-        print(f"[WARN] Nenhuma fonte TrueType encontrada, usando padrão.")
+        print(f"[WARN] Nenhuma fonte TrueType encontrada, usando padr o.")
         title_font = ImageFont.load_default()
         letter_font = ImageFont.load_default()
 
-    # Desenhar título centralizado
+    # Desenhar t tulo centralizado
     title = os.path.basename(caminho_dxf)
     bbox = draw.textbbox((0, 0), title, font=title_font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     draw.text(((w_px - tw) / 2, (margin - th) / 2), title, fill='black', font=title_font)
 
-    # Dimensões da etiqueta em px
+    # Dimens es da etiqueta em px
     half_w = (ETIQ_LX_MM / 2) * scale
     half_h = (ETIQ_LY_MM / 2) * scale
 
-    # Desenhar retângulos e letras
+    # Desenhar ret ngulos e letras
     for item in lista_arquivos:
         pos = item.posicao
         name = item.nome.upper()
-
-        # 1. Primeiro tenta as três últimas letras antes do .dxf
+        # 1. Primeiro tenta as tr s ltimas letras antes do .dxf
         key = os.path.splitext(name)[0][-3:]
         color = COLOR_MAP.get(key)
         letter = LETTER_MAP.get(key)
-
-        # 2. Se não achou, procura -DOU, -ROS, -PRA em qualquer parte do nome
+        
+        # 2. Se n o achou, procura -DOU, -ROS, -PRA em qualquer parte do nome
         if color is None or letter is None:
             if '-DOU' in name:
                 key = 'DOU'
@@ -97,15 +96,19 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos, custom_coords=None, custom_c
                 key = 'PRA'
             else:
                 key = None
+            
             color = COLOR_MAP.get(key, '#CCCCCC')
             letter = LETTER_MAP.get(key, '?')
 
-        xm, ym = coords_reais.get(pos, (0, 0)) # Usa as coordenadas dinâmicas ou padrão
+        xm, ym = coords_reais.get(pos, (0, 0)) # Usa as coordenadas din micas ou padr o
         cx = xm * scale
         cy = h_px - (ym * scale) + margin
+
         left, top = cx - half_w, cy - half_h
         right, bottom = cx + half_w, cy + half_h
+
         draw.rectangle([left, top, right, bottom], fill=color)
+
         bbox2 = draw.textbbox((0, 0), letter, font=letter_font)
         lw, lh = bbox2[2] - bbox2[0], bbox2[3] - bbox2[1]
         draw.text((cx - lw / 2, cy - lh / 2), letter, fill='black', font=letter_font)
@@ -114,6 +117,7 @@ def gerar_imagem_plano(caminho_dxf, lista_arquivos, custom_coords=None, custom_c
     os.makedirs(os.path.dirname(caminho_dxf) or '.', exist_ok=True)
     img.save(png_path)
     print(f"[INFO] PNG salvo: {png_path}")
+
     try:
         url_png = upload_to_drive(png_path, os.path.basename(png_path))
         print(f"[INFO] PNG enviado ao Drive: {url_png}")
@@ -153,10 +157,11 @@ def adicionar_marca(msp, x, y, tamanho=17):
 def compor_dxf_com_base(lista_arquivos, caminho_saida, custom_coords=None, custom_chapa=None):
     doc = ezdxf.new()
     msp = doc.modelspace()
-    # Define as unidades do documento DXF como milímetros
-    doc.header['$INSUNITS'] = units.MM 
     
-    # Se customizado, calcula dinamicamente. Se não, usa o chumbado.
+    # Define as unidades do documento DXF como mil metros
+    doc.header['$INSUNITS'] = units.MM
+    
+    # Se customizado, calcula dinamicamente. Se n o, usa o chumbado.
     coords_reais = custom_coords if custom_coords else COORDENADAS
     
     if custom_chapa:
@@ -175,7 +180,9 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida, custom_coords=None, custo
         
     first = next((it for it in lista_arquivos if it.posicao == 1), None)
     if first:
-        path = baixar_arquivo_drive(first.nome, subpasta='arquivos padronizados')
+        path = f"/tmp/{first.nome}"
+        if not os.path.exists(path):
+            path = baixar_arquivo_drive(first.nome, subpasta='arquivos padronizados')
         eb = ezdxf.readfile(path).modelspace()
         cx, cy = calcular_centro(eb)
         # Usa coords_reais garantindo compatibilidade com o formato universal
@@ -194,7 +201,9 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida, custom_coords=None, custo
             grupos[it.nome].append(it.posicao)
             
     for nome, poses in grupos.items():
-        path = baixar_arquivo_drive(nome, subpasta='arquivos padronizados')
+        path = f"/tmp/{nome}"
+        if not os.path.exists(path):
+            path = baixar_arquivo_drive(nome, subpasta='arquivos padronizados')
         eb = ezdxf.readfile(path).modelspace()
         cx, cy = calcular_centro(eb)
         blk = doc.blocks.new(name=f"BLK_{nome.replace('.','_')}")
@@ -211,5 +220,5 @@ def compor_dxf_com_base(lista_arquivos, caminho_saida, custom_coords=None, custo
     os.makedirs(os.path.dirname(caminho_saida) or '.', exist_ok=True)
     doc.saveas(caminho_saida)
     
-    # Repassa as variáveis para que a imagem seja gerada nas mesmas proporções
+    # Repassa as vari veis para que a imagem seja gerada nas mesmas propor  es
     gerar_imagem_plano(caminho_saida, lista_arquivos, custom_coords, custom_chapa)

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware # Importado para permitir requisições de diferentes origens
 
 # Importações das funções de composição DXF e de interação com o Google Drive
 from compose_dxf import compor_dxf_com_base as compor_dxf_com_base_18
@@ -8,9 +8,10 @@ from compose_dxf_32 import compor_dxf_com_base_32
 from compose_dxf_32_2 import compor_dxf_com_base_32_2
 
 # Importações para a rota de Placas Personalizadas
-from detects_plaque import processar_ids_placas
+from detects_plaque import processar_ids_placas, limpar_dxf_placas, mapear_cor
 
-from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos
+# Agora importamos 'mover_arquivos_antigos' corretamente
+from google_drive import upload_to_drive, listar_arquivos_existentes, baixar_arquivo_drive, arquivo_existe_drive, mover_arquivos_antigos, buscar_dxf_personalizado
 
 from datetime import datetime
 from types import SimpleNamespace
@@ -36,8 +37,17 @@ class Entrada(BaseModel):
     coordenadas_customizadas: dict[int, list[float]] = None
     tamanho_chapa: list[float] = None
 
+class PlacaConfig(BaseModel):
+    id: str
+    quantidade: int = 1
+    cor: str = ""
+
 class EntradaPlacas(BaseModel):
-    ids: list[str]
+    ids: list[str] = None # Mantido para retrocompatibilidade
+    placas: list[PlacaConfig] = None
+    tamanho_chapa: list[float] = None
+    coordenadas_customizadas: dict[int, list[float]] = None
+    nome_arquivo: str = None
 
 @app.post("/compor")
 def compor(entrada: Entrada):
@@ -119,14 +129,95 @@ def compor(entrada: Entrada):
 @app.post("/engraved_plaque")
 def engraved_plaque(entrada: EntradaPlacas):
     """
-    Recebe uma lista de IDs, busca o DXF correspondente no Google Drive (com base em Regex),
-    e conta quantas placas amarelas existem usando o novo motor em detects_plaque.py.
+    Novo Endpoint Híbrido:
+    - Se enviar apenas 'ids', ele só conta as placas (Modo antigo/simples).
+    - Se enviar 'placas', 'tamanho_chapa' e 'coordenadas_customizadas', ele extrai 
+      as placas limpas, injeta a cor e gera o plano de corte inteiro!
     """
-    if not entrada.ids:
-        raise HTTPException(status_code=400, detail="A lista de IDs não pode estar vazia.")
+    if entrada.ids and not entrada.placas:
+        resultados = processar_ids_placas(entrada.ids)
+        return {"resultados": resultados}
     
-    resultados = processar_ids_placas(entrada.ids)
-    return {"resultados": resultados}
+    if not entrada.placas:
+        raise HTTPException(status_code=400, detail="A lista de placas não pode estar vazia.")
+        
+    # Verifica se quer compor o plano de corte
+    if not entrada.tamanho_chapa or not entrada.coordenadas_customizadas or not entrada.nome_arquivo:
+        raise HTTPException(status_code=400, detail="Para gerar o plano, informe tamanho_chapa, coordenadas_customizadas e nome_arquivo.")
+
+    lista_arquivos_composicao = []
+    resultados_log = []
+
+    # 1. Isolamento e Limpeza das Placas
+    for placa in entrada.placas:
+        caminho_local, nome_original = buscar_dxf_personalizado(placa.id)
+        
+        if not caminho_local:
+            resultados_log.append({"id": placa.id, "status": "nao_encontrado"})
+            continue
+            
+        sufixo_cor = mapear_cor(placa.cor)
+        nome_limpo = f"{placa.id}_limpo-{sufixo_cor}.dxf"
+        caminho_limpo = f"/tmp/{nome_limpo}"
+        
+        # Limpa o arquivo deixando SÓ a placa e o que está dentro dela
+        qtd_encontrada = limpar_dxf_placas(caminho_local, caminho_limpo)
+        resultados_log.append({"id": placa.id, "placas_internas_encontradas": qtd_encontrada, "cor_injetada": sufixo_cor})
+        
+        if qtd_encontrada > 0:
+            # Clona o nome da peça limpa a quantidade de vezes solicitada
+            for _ in range(placa.quantidade):
+                lista_arquivos_composicao.append(nome_limpo)
+
+    if not lista_arquivos_composicao:
+        raise HTTPException(status_code=400, detail="Nenhuma placa válida encontrada para compor.")
+
+    # 2. Composição Hibrida (Aproveitando a Lógica do /compor)
+    total = len(lista_arquivos_composicao)
+    max_por_plano = len(entrada.coordenadas_customizadas)
+    num_planos = (total + max_por_plano - 1) // max_por_plano
+    
+    existentes = listar_arquivos_existentes()
+    nome_base = entrada.nome_arquivo
+    planos = []
+
+    for i in range(num_planos):
+        chunk_names = lista_arquivos_composicao[i*max_por_plano : (i+1)*max_por_plano]
+        chunk_objs = [
+            SimpleNamespace(nome=name, posicao=index + 1)
+            for index, name in enumerate(chunk_names)
+        ]
+
+        if i == 0:
+            nome_saida = nome_base
+        else:
+            nome_saida = nome_base.replace('.dxf', f'_{i+1:02d}.dxf')
+
+        nome_saida_livre = nome_saida
+        contador_extra = 2
+        while nome_saida_livre in existentes:
+            nome_saida_livre = nome_base.replace('.dxf', f'_{i+contador_extra:02d}.dxf')
+            contador_extra += 1
+
+        path_saida = f"/tmp/{nome_saida_livre}"
+        
+        # Usa sempre o motor universal (com base 18) para customizados
+        compor_dxf_com_base_18(
+            chunk_objs, 
+            path_saida, 
+            custom_coords=entrada.coordenadas_customizadas, 
+            custom_chapa=entrada.tamanho_chapa
+        )
+
+        url_dxf = upload_to_drive(path_saida, nome_saida_livre)
+        url_png_simulado = url_dxf.replace('.dxf', '.png').replace('/view', '')
+
+        planos.append({"nome": nome_saida_livre, "url": url_dxf, "url_png": url_png_simulado})
+
+    return {
+        "logs_deteccao": resultados_log,
+        "plans": planos
+    }
 
 
 @app.post("/mover-antigos")
